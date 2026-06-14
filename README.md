@@ -90,7 +90,14 @@ Open the "Settings" tab to:
 
 ### Package the ClamAV Runtime
 
-After building, copy the Homebrew ClamAV runtime into the app bundle:
+For local development, build and package the ClamAV runtime in one step:
+
+```bash
+Scripts/build-debug-with-clamav-runtime.sh
+```
+
+After a manual Xcode build, you can also copy the Homebrew ClamAV runtime into
+an app bundle directly:
 
 ```bash
 Scripts/package-clamav-runtime.sh /path/to/ClamGUI.app /opt/homebrew
