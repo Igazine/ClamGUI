@@ -210,7 +210,27 @@ struct ScanView: View {
 
     /// Show existing scan result from database
     private func showExistingScanResult(for url: URL) async {
-        // Not implemented - just show the last scan result from ClamAVManager
+        let folderId: Int64 = 1
+        guard let record = ScanResultsDatabase.shared.getRecord(url.path, folderId: folderId) else {
+            return
+        }
+
+        let resultStatus: ClamAVManager.ScanResult.ScanStatus
+        switch record.status {
+        case .clean:
+            resultStatus = .clean
+        case .infected:
+            resultStatus = .infected
+        case .error:
+            resultStatus = .error
+        }
+
+        clamAVManager.lastScanResult = ClamAVManager.ScanResult(
+            filePath: record.path,
+            status: resultStatus,
+            threatName: record.threatName,
+            timestamp: record.scanTimestamp
+        )
     }
     
     /// Record scan result in database

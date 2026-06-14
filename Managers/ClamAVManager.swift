@@ -164,10 +164,12 @@ class ClamAVManager: ObservableObject {
     /// For manual scans - waits for result and returns it
     func scanFile(at path: String) async -> ScanResult {
         isScanning = true
-        
+        defer {
+            isScanning = false
+        }
+
         let result = await ScanEngineManager.shared.scanFile(at: path)
 
-        isScanning = false
         lastScanResult = result
 
         return result

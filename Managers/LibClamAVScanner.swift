@@ -18,6 +18,7 @@ actor LibClamAVScanner: MalwareScanner {
         let clLoad: @convention(c) (UnsafePointer<CChar>?, OpaquePointer?, UnsafeMutablePointer<UInt32>?, UInt32) -> Int32
         let clEngineCompile: @convention(c) (OpaquePointer?) -> Int32
         let clEngineFree: @convention(c) (OpaquePointer?) -> Int32
+        let clEngineSetNum: @convention(c) (OpaquePointer?, Int32, Int64) -> Int32
         let clScanFileEx: @convention(c) (
             UnsafePointer<CChar>,
             UnsafeMutablePointer<Int32>?,
@@ -58,6 +59,8 @@ actor LibClamAVScanner: MalwareScanner {
 
         do {
             let dbPath = try resolveDatabasePath(api: api)
+            try configureEngine(newEngine, api: api)
+
             var loadedSignatures: UInt32 = 0
             let loadResult = dbPath.withCString { pathPointer in
                 api.clLoad(pathPointer, newEngine, &loadedSignatures, LibClamAVConstants.dbStandardOptions)
@@ -169,6 +172,7 @@ actor LibClamAVScanner: MalwareScanner {
             clLoad: try symbol("cl_load", in: handle),
             clEngineCompile: try symbol("cl_engine_compile", in: handle),
             clEngineFree: try symbol("cl_engine_free", in: handle),
+            clEngineSetNum: try symbol("cl_engine_set_num", in: handle),
             clScanFileEx: try symbol("cl_scanfile_ex", in: handle),
             clStrError: try symbol("cl_strerror", in: handle),
             clRetDbDir: try symbol("cl_retdbdir", in: handle)
@@ -244,6 +248,20 @@ actor LibClamAVScanner: MalwareScanner {
         throw MalwareScannerError.signatureLoadFailed("No ClamAV signature database found. Expected databases in \(appDatabasePath).")
     }
 
+    private func configureEngine(_ engine: OpaquePointer, api: API) throws {
+        let settings: [(Int32, Int64)] = [
+            (LibClamAVConstants.engineBytecodeTimeout, 10_000),
+            (LibClamAVConstants.engineMaxScanTime, 30_000)
+        ]
+
+        for (field, value) in settings {
+            let result = api.clEngineSetNum(engine, field, value)
+            guard result == LibClamAVConstants.success else {
+                throw MalwareScannerError.initializationFailed("Could not configure libclamav engine: \(errorMessage(result, api: api))")
+            }
+        }
+    }
+
     private static var appDatabaseDirectory: URL {
         SignatureDatabaseManager.databaseDirectory
     }
@@ -278,6 +296,8 @@ private enum LibClamAVConstants {
     static let success: Int32 = 0
     static let initDefault: UInt32 = 0
     static let dbStandardOptions: UInt32 = 0x2 | 0x8 | 0x2000
+    static let engineBytecodeTimeout: Int32 = 16
+    static let engineMaxScanTime: Int32 = 31
     static let verdictNothingFound: Int32 = 0
     static let verdictTrusted: Int32 = 1
     static let verdictStrongIndicator: Int32 = 2
@@ -294,7 +314,7 @@ private struct LibClamAVScanOptions {
     static var `default`: LibClamAVScanOptions {
         LibClamAVScanOptions(
             general: 0x4,
-            parse: UInt32.max,
+            parse: 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x40 | 0x80 | 0x100 | 0x200 | 0x400 | 0x800,
             heuristic: 0,
             mail: 0,
             dev: 0

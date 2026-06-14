@@ -270,7 +270,7 @@ class ScanResultsDatabase: @unchecked Sendable {
         }
     }
     
-    private func getRecord(_ path: String, folderId: Int64) -> ScanResultRecord? {
+    func getRecord(_ path: String, folderId: Int64) -> ScanResultRecord? {
         let sql = """
         SELECT id, path, folder_id, status, threat_name, scan_timestamp, file_size, modification_date
         FROM scan_results
