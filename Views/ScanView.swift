@@ -168,16 +168,6 @@ struct ScanView: View {
             return
         }
 
-        // Check if file was already scanned and unchanged
-        let needsScan = await checkIfNeedsScan(url: url)
-
-        if !needsScan {
-            // File already scanned with same properties - show existing result
-            await showExistingScanResult(for: url)
-            return
-        }
-
-        // Perform new scan
         let result = await clamAVManager.scanFile(at: url.path)
 
         // Record in database ONLY if scan was successful (not an error)
@@ -210,37 +200,6 @@ struct ScanView: View {
         }
     }
     
-    /// Check if file needs to be scanned (not in DB or modified)
-    private func checkIfNeedsScan(url: URL) async -> Bool {
-        let folderId: Int64 = 1
-        return ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId)
-    }
-
-    /// Show existing scan result from database
-    private func showExistingScanResult(for url: URL) async {
-        let folderId: Int64 = 1
-        guard let record = ScanResultsDatabase.shared.getRecord(url.path, folderId: folderId) else {
-            return
-        }
-
-        let resultStatus: ClamAVManager.ScanResult.ScanStatus
-        switch record.status {
-        case .clean:
-            resultStatus = .clean
-        case .infected:
-            resultStatus = .infected
-        case .error:
-            resultStatus = .error
-        }
-
-        clamAVManager.lastScanResult = ClamAVManager.ScanResult(
-            filePath: record.path,
-            status: resultStatus,
-            threatName: record.threatName,
-            timestamp: record.scanTimestamp
-        )
-    }
-    
     /// Record scan result in database
     private func recordScanResult(url: URL, result: ClamAVManager.ScanResult) async {
         let folderId: Int64 = 1
@@ -251,14 +210,6 @@ struct ScanView: View {
             status: status,
             threatName: result.threatName
         )
-    }
-
-    private func convertScanResult(_ status: ClamAVManager.ScanResult.ScanStatus) -> ScanStatus {
-        switch status {
-        case .clean: return .clean
-        case .infected: return .infected
-        case .error: return .error
-        }
     }
 
     private func quarantineInfectedFile(at url: URL, threatName: String) async {
