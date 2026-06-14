@@ -9,7 +9,7 @@
 import Foundation
 import AppKit
 
-/// Manages all communication with the ClamAV daemon through Unix domain socket
+/// Manages scanner availability and UI-facing scan state.
 @MainActor
 class ClamAVManager: ObservableObject {
     static let shared = ClamAVManager()
@@ -24,6 +24,8 @@ class ClamAVManager: ObservableObject {
     @Published var virusDefinitionsOutdated = false
     @Published var isStartingClamd = false  // Spinner for daemon startup
     @Published var clamdStartError: String? = nil  // Error message if startup fails
+    @Published var activeScannerName: String = "Unavailable"
+    @Published var scannerStatusMessage: String = "Scanner not initialized"
 
     /// ClamGUI's custom socket path (exclusive to ClamGUI)
     /// This socket is created by our custom clamd.conf
@@ -65,14 +67,14 @@ class ClamAVManager: ObservableObject {
     // MARK: - ClamAV Installation Check
 
     func checkClamAVInstallation() async {
-        // Check if ClamGUI's custom socket exists (our exclusive clamd instance)
-        if fileExists(at: Self.clamGUISocketPath) {
+        let clamdSocketExists = fileExists(at: Self.clamGUISocketPath)
+        let status = await ScanEngineManager.shared.preparePreferredScanner(clamdSocketExists: clamdSocketExists)
+
+        if status.isReady {
             isClamAVInstalled = true
             isClamdRunning = true
-            print("ClamGUI clamd socket found at: \(Self.clamGUISocketPath)")
-            
-            // JUNCTION n12: Daemon is ready, start the Queue
-            QueueManager.shared.start()
+            activeScannerName = status.backend?.rawValue ?? "Unknown"
+            scannerStatusMessage = status.message
             return
         }
 
@@ -90,6 +92,8 @@ class ClamAVManager: ObservableObject {
             if fileExists(at: path) {
                 isClamAVInstalled = true
                 isClamdRunning = false
+                activeScannerName = "Unavailable"
+                scannerStatusMessage = status.message
                 print("ClamAV daemon binary found at: \(path), but ClamGUI daemon not running")
                 return
             }
@@ -99,12 +103,16 @@ class ClamAVManager: ObservableObject {
         if commandExists("clamscan") {
             isClamAVInstalled = true
             isClamdRunning = false
+            activeScannerName = "Unavailable"
+            scannerStatusMessage = status.message
             print("ClamAV installed (clamscan found) but ClamGUI daemon not running")
             return
         }
 
         isClamAVInstalled = false
         isClamdRunning = false
+        activeScannerName = "Unavailable"
+        scannerStatusMessage = status.message
         print("ClamAV not detected on system")
     }
 
@@ -125,8 +133,9 @@ class ClamAVManager: ObservableObject {
 
     /// Close socket connection (called on app termination)
     func closeSocketConnection() {
-        QueueManager.shared.stopProcessing()
-        print("QueueManager stopped")
+        Task {
+            await ScanEngineManager.shared.shutdown()
+        }
     }
 
     // MARK: - File Scanning
@@ -136,8 +145,7 @@ class ClamAVManager: ObservableObject {
     func scanFile(at path: String) async -> ScanResult {
         isScanning = true
         
-        // Use QueueManager for all scanning
-        let result = await QueueManager.shared.scanFile(at: path)
+        let result = await ScanEngineManager.shared.scanFile(at: path)
 
         isScanning = false
         lastScanResult = result
@@ -253,11 +261,17 @@ class ClamAVManager: ObservableObject {
     }
 
     func reloadDatabase() async -> String {
-        return "RELOAD command sent"
+        do {
+            try await ScanEngineManager.shared.reloadSignatures()
+            return "Signature database reloaded"
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     func shutdown() async -> String {
-        return "SHUTDOWN command sent"
+        await ScanEngineManager.shared.shutdown()
+        return "Scanner shut down"
     }
 
     // MARK: - Daemon Management (Direct Process, No launchd)
@@ -444,6 +458,7 @@ class ClamAVManager: ObservableObject {
 
             // Verify it started successfully
             await checkClamAVInstallation()
+            try? await ScanEngineManager.shared.useLegacyClamdScanner()
             
             isStartingClamd = false
 
@@ -470,6 +485,7 @@ class ClamAVManager: ObservableObject {
         
         // Suspend queue immediately as daemon is going down
         QueueManager.shared.suspendQueue()
+        await ScanEngineManager.shared.shutdown()
 
         // Wait up to 5 seconds for clean exit
         var waitCount = 0

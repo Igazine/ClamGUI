@@ -191,28 +191,40 @@ struct SettingsView: View {
             // ClamAV Status
             Section("ClamAV Status") {
                 HStack {
-                    Text("Installation")
+                    Text("Scanner")
+                    Spacer()
+
+                    Label(clamAVManager.activeScannerName, systemImage: clamAVManager.isClamdRunning ? "shield.checkered" : "exclamationmark.triangle")
+                        .foregroundColor(clamAVManager.isClamdRunning ? .green : .orange)
+                }
+
+                Text(clamAVManager.scannerStatusMessage)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                HStack {
+                    Text("ClamAV Components")
                     Spacer()
 
                     if clamAVManager.isClamAVInstalled {
-                        Label("Installed", systemImage: "checkmark.circle")
+                        Label("Available", systemImage: "checkmark.circle")
                             .foregroundColor(.green)
                     } else {
-                        Label("Not Installed", systemImage: "exclamationmark.triangle")
+                        Label("Unavailable", systemImage: "exclamationmark.triangle")
                             .foregroundColor(.red)
                     }
                 }
 
                 HStack {
-                    Text("Daemon Status")
+                    Text("Legacy Daemon")
                     Spacer()
 
-                    if clamAVManager.isClamdRunning {
+                    if clamAVManager.activeScannerName == ScannerBackend.clamd.rawValue {
                         Label("Running", systemImage: "play.circle")
                             .foregroundColor(.green)
                     } else if clamAVManager.isClamAVInstalled {
-                        Label("Not Running", systemImage: "stop.circle")
-                            .foregroundColor(.orange)
+                        Label("Inactive", systemImage: "stop.circle")
+                            .foregroundColor(.secondary)
                     } else {
                         Text("—")
                             .foregroundColor(.secondary)
@@ -220,9 +232,9 @@ struct SettingsView: View {
                 }
 
                 // Daemon controls
-                if clamAVManager.isClamAVInstalled {
+                if clamAVManager.isClamAVInstalled && clamAVManager.activeScannerName != ScannerBackend.nativeLibClamAV.rawValue {
                     HStack {
-                        if clamAVManager.isClamdRunning {
+                        if clamAVManager.activeScannerName == ScannerBackend.clamd.rawValue {
                             Button(action: {
                                 Task {
                                     await clamAVManager.restartClamd()

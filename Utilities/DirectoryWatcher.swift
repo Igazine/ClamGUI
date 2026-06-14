@@ -136,7 +136,6 @@ class DirectoryWatcher: ObservableObject {
             self.pendingModifications.remove(path)
             self.modificationLock.unlock()
             guard FileManager.default.fileExists(atPath: path) else { return }
-            QueueManager.shared.scanFileBackground(path) { _ in }
             Task { @MainActor in self.onFileModified?(url) }
         }
     }

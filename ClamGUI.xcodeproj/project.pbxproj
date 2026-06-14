@@ -30,6 +30,10 @@
 		1A0000000000000000000018 /* ScanResultsDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000020 /* ScanResultsDatabase.swift */; };
 		1A0000000000000000000015 /* ThreatActionModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000017 /* ThreatActionModal.swift */; };
 		1A0000000000000000000016 /* FoundThreatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000018 /* FoundThreatsView.swift */; };
+		1A0000000000000000000022 /* MalwareScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000022 /* MalwareScanner.swift */; };
+		1A0000000000000000000023 /* ClamdScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000023 /* ClamdScanner.swift */; };
+		1A0000000000000000000024 /* LibClamAVScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000024 /* LibClamAVScanner.swift */; };
+		1A0000000000000000000025 /* ScanEngineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000025 /* ScanEngineManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -59,6 +63,10 @@
 		2A0000000000000000000020 /* ScanResultsDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanResultsDatabase.swift; sourceTree = "<group>"; };
 		2A0000000000000000000017 /* ThreatActionModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreatActionModal.swift; sourceTree = "<group>"; };
 		2A0000000000000000000018 /* FoundThreatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundThreatsView.swift; sourceTree = "<group>"; };
+		2A0000000000000000000022 /* MalwareScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MalwareScanner.swift; sourceTree = "<group>"; };
+		2A0000000000000000000023 /* ClamdScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClamdScanner.swift; sourceTree = "<group>"; };
+		2A0000000000000000000024 /* LibClamAVScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibClamAVScanner.swift; sourceTree = "<group>"; };
+		2A0000000000000000000025 /* ScanEngineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanEngineManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,6 +133,9 @@
 				2A000000000000000000000B /* UpdaterManager.swift */,
 				2A000000000000000000000D /* SettingsManager.swift */,
 				2A0000000000000000000011 /* QuarantineManager.swift */,
+				2A0000000000000000000023 /* ClamdScanner.swift */,
+				2A0000000000000000000024 /* LibClamAVScanner.swift */,
+				2A0000000000000000000025 /* ScanEngineManager.swift */,
 			);
 			path = Managers;
 			sourceTree = "<group>";
@@ -140,6 +151,7 @@
 				2A0000000000000000000021 /* QueueCommand.swift */,
 				2A0000000000000000000016 /* ThreatActionHandler.swift */,
 				2A0000000000000000000020 /* ScanResultsDatabase.swift */,
+				2A0000000000000000000022 /* MalwareScanner.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -235,6 +247,10 @@
 				1A0000000000000000000018 /* ScanResultsDatabase.swift in Sources */,
 				1A0000000000000000000015 /* ThreatActionModal.swift in Sources */,
 				1A0000000000000000000016 /* FoundThreatsView.swift in Sources */,
+				1A0000000000000000000022 /* MalwareScanner.swift in Sources */,
+				1A0000000000000000000023 /* ClamdScanner.swift in Sources */,
+				1A0000000000000000000024 /* LibClamAVScanner.swift in Sources */,
+				1A0000000000000000000025 /* ScanEngineManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

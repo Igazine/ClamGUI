@@ -37,6 +37,13 @@ Source:
 
 - https://www.swift.org/documentation/articles/wrapping-c-cpp-library-in-swift.html
 
+The current implementation uses `dlopen`/`dlsym` as an intermediate step. This
+keeps the Xcode target buildable on machines that do not have Homebrew ClamAV
+headers installed, while still calling the native C API in-process. The runtime
+loader searches the app bundle's private frameworks directory first, then common
+Homebrew development paths. Production packaging should bundle `libclamav` and
+its non-system dependencies in the app rather than relying on Homebrew paths.
+
 ## libclamav Lifecycle
 
 The in-process scanner should be long-lived. Loading signatures and compiling

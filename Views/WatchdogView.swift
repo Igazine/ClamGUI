@@ -417,49 +417,29 @@ struct WatchdogView: View {
             filesScanned += 1
         }
         
-        // Perform scan via QueueManager with completion handler
-        print("📡 scanNewFile: Enqueueing \(url.path) for scan")
-        let selfRef = self
-        QueueManager.shared.scanFileBackground(url.path) { result in
-            print("🚨 CLOSURE ENTRY")
-            guard let result = result else { 
-                print("⚠️ scanNewFile: Result is nil")
-                return 
+        let result = await clamAVManager.scanFile(at: url.path)
+        let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
+        await ScanResultsDatabase.shared.recordScan(
+            path: url.path,
+            folderId: folderId,
+            status: status,
+            threatName: result.threatName
+        )
+
+        if case .infected = result.status {
+            if SettingsManager.shared.showNotifications {
+                NotificationManager.shared.showThreatNotification(
+                    fileName: url.lastPathComponent,
+                    threatName: result.threatName ?? "Unknown"
+                )
+                MenuBarManager.shared.notifyThreatFound()
             }
-            
-            print("🚨 Got result: \(result.status)")
-            
-            DispatchQueue.main.async {
-                // Record in database (single table!)
-                let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
-                print("📝 scanNewFile: Recording \(url.path), status=\(status)")
-                Task {
-                    await ScanResultsDatabase.shared.recordScan(
-                        path: url.path,
-                        folderId: folderId,
-                        status: status,
-                        threatName: result.threatName
-                    )
-                    
-                    // Handle infected files
-                    if case .infected = result.status {
-                        print("🦠 scanNewFile: Infected, calling handleThreatDetected")
-                        if SettingsManager.shared.showNotifications {
-                            NotificationManager.shared.showThreatNotification(
-                                fileName: url.lastPathComponent,
-                                threatName: result.threatName ?? "Unknown"
-                            )
-                            MenuBarManager.shared.notifyThreatFound()
-                        }
-                        
-                        await selfRef.updateThreatsCount()
-                        await ThreatActionHandler.shared.handleThreatDetected(
-                            filePath: url.path,
-                            threatName: result.threatName ?? "Unknown"
-                        )
-                    }
-                }
-            }
+
+            updateThreatsCount()
+            await ThreatActionHandler.shared.handleThreatDetected(
+                filePath: url.path,
+                threatName: result.threatName ?? "Unknown"
+            )
         }
     }
 
@@ -467,33 +447,27 @@ struct WatchdogView: View {
         let folderId: Int64 = 1
         print("File modified: \(url.path)")
 
-        // Perform scan with completion handler to record result
-        QueueManager.shared.scanFileBackground(url.path) { result in
-            Task { @MainActor in
-                guard let result = result else { return }
-                
-                let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
-                await ScanResultsDatabase.shared.recordScan(
-                    path: url.path,
-                    folderId: folderId,
-                    status: status,
-                    threatName: result.threatName
+        let result = await clamAVManager.scanFile(at: url.path)
+        let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
+        await ScanResultsDatabase.shared.recordScan(
+            path: url.path,
+            folderId: folderId,
+            status: status,
+            threatName: result.threatName
+        )
+
+        if case .infected = result.status {
+            if SettingsManager.shared.showNotifications {
+                NotificationManager.shared.showThreatNotification(
+                    fileName: url.lastPathComponent,
+                    threatName: result.threatName ?? "Unknown"
                 )
-                
-                if case .infected = result.status {
-                    if SettingsManager.shared.showNotifications {
-                        NotificationManager.shared.showThreatNotification(
-                            fileName: url.lastPathComponent,
-                            threatName: result.threatName ?? "Unknown"
-                        )
-                    }
-                    self.updateThreatsCount()
-                    await ThreatActionHandler.shared.handleThreatDetected(
-                        filePath: url.path,
-                        threatName: result.threatName ?? "Unknown"
-                    )
-                }
             }
+            updateThreatsCount()
+            await ThreatActionHandler.shared.handleThreatDetected(
+                filePath: url.path,
+                threatName: result.threatName ?? "Unknown"
+            )
         }
     }
 
