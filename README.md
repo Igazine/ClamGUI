@@ -121,7 +121,7 @@ The app automatically detects the socket location.
 
 ## License
 
-MIT License - see LICENSE file for details
+GPL-2.0-only - see LICENSE file for details
 
 ## Contributing
 
