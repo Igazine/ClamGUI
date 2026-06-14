@@ -15,6 +15,7 @@ xcodebuild \
 
 app_bundle="$derived_data/Build/Products/Debug/ClamGUI.app"
 "$project_root/Scripts/package-clamav-runtime.sh" "$app_bundle" "$clamav_prefix"
+"$project_root/Scripts/verify-clamav-runtime.sh" "$app_bundle"
 
 echo "Built packaged debug app:"
 echo "  $app_bundle"

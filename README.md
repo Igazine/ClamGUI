@@ -108,6 +108,12 @@ dependencies into the bundle and rewrites install names to use the app's
 `Contents/Frameworks` directory. It also ad-hoc signs the modified runtime
 files for local development builds.
 
+To verify an already packaged app bundle:
+
+```bash
+Scripts/verify-clamav-runtime.sh /path/to/ClamGUI.app
+```
+
 ## Project Structure
 
 ```
