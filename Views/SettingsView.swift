@@ -18,21 +18,11 @@ struct SettingsView: View {
             Section {
                 Toggle("Auto-scan files when added", isOn: $settingsManager.autoScanOnFileAdded)
 
-                HStack {
-                    Text("Max scan size")
-                    Spacer()
-                    TextField("", value: $settingsManager.maxScanSize, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                    Text("MB")
-                        .foregroundColor(.secondary)
-                }
-
                 Toggle("Scan archives recursively", isOn: $settingsManager.scanArchives)
             } header: {
                 Text("Watchdog")
             } footer: {
-                Text("Max scan size limits how much data ClamAV scans per file. Files larger than this will be skipped. This protects against denial-of-service attacks using huge files.")
+                Text("Watchdog monitors the selected directory and scans new or modified files while active.")
             }
             
             // Notifications

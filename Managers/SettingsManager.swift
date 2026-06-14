@@ -20,7 +20,6 @@ class SettingsManager: ObservableObject {
     @Published var autoScanOnFileAdded: Bool = true
     @Published var showNotifications: Bool = true
     @Published var scanArchives: Bool = true
-    @Published var maxScanSize: Int = 100 // MB
     @Published var startAtLogin: Bool = false
     @Published var hideMenuBarIcon: Bool = false
     @Published var launchClamdWithSudo: Bool = false
@@ -43,11 +42,13 @@ class SettingsManager: ObservableObject {
 
     private let userDefaultsKey = "com.clamgui.settings"
     private let dbSettingsKey = "com.clamgui.dbsettings"
+    private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Initialization
     
     private init() {
         loadSettings()
+        setupAutosave()
     }
     
     // MARK: - Settings Persistence
@@ -58,7 +59,6 @@ class SettingsManager: ObservableObject {
             "autoScanOnFileAdded": autoScanOnFileAdded,
             "showNotifications": showNotifications,
             "scanArchives": scanArchives,
-            "maxScanSize": maxScanSize,
             "startAtLogin": startAtLogin,
             "hideMenuBarIcon": hideMenuBarIcon,
             "launchClamdWithSudo": launchClamdWithSudo,
@@ -82,6 +82,36 @@ class SettingsManager: ObservableObject {
         UserDefaults.standard.set(dbSettings, forKey: dbSettingsKey)
     }
 
+    private func setupAutosave() {
+        let settingsPublishers: [AnyPublisher<Void, Never>] = [
+            $watchDirectory.map { _ in }.eraseToAnyPublisher(),
+            $autoScanOnFileAdded.map { _ in }.eraseToAnyPublisher(),
+            $showNotifications.map { _ in }.eraseToAnyPublisher(),
+            $scanArchives.map { _ in }.eraseToAnyPublisher(),
+            $startAtLogin.map { _ in }.eraseToAnyPublisher(),
+            $hideMenuBarIcon.map { _ in }.eraseToAnyPublisher(),
+            $launchClamdWithSudo.map { _ in }.eraseToAnyPublisher(),
+            $hasShownSudoWarning.map { _ in }.eraseToAnyPublisher(),
+            $quarantineEnabled.map { _ in }.eraseToAnyPublisher(),
+            $quarantinePath.map { _ in }.eraseToAnyPublisher(),
+            $dbMaxRecords.map { _ in }.eraseToAnyPublisher(),
+            $dbRetentionDays.map { _ in }.eraseToAnyPublisher(),
+            $dbCleanupOnFolderChange.map { _ in }.eraseToAnyPublisher(),
+            $dbAutoMaintenance.map { _ in }.eraseToAnyPublisher(),
+            $threatAutoAction.map { _ in }.eraseToAnyPublisher(),
+            $threatAutoActionValue.map { _ in }.eraseToAnyPublisher(),
+            $clearExecutableBit.map { _ in }.eraseToAnyPublisher()
+        ]
+
+        Publishers.MergeMany(settingsPublishers)
+            .dropFirst(settingsPublishers.count)
+            .debounce(for: .milliseconds(250), scheduler: RunLoop.main)
+            .sink { [weak self] in
+                self?.saveSettings()
+            }
+            .store(in: &cancellables)
+    }
+
     func loadSettings() {
         guard let settings = UserDefaults.standard.dictionary(forKey: userDefaultsKey) else {
             // Set default quarantine path on first load
@@ -97,7 +127,6 @@ class SettingsManager: ObservableObject {
         autoScanOnFileAdded = settings["autoScanOnFileAdded"] as? Bool ?? true
         showNotifications = settings["showNotifications"] as? Bool ?? true
         scanArchives = settings["scanArchives"] as? Bool ?? true
-        maxScanSize = settings["maxScanSize"] as? Int ?? 100
         startAtLogin = settings["startAtLogin"] as? Bool ?? false
         hideMenuBarIcon = settings["hideMenuBarIcon"] as? Bool ?? false
         launchClamdWithSudo = settings["launchClamdWithSudo"] as? Bool ?? false
@@ -135,7 +164,6 @@ class SettingsManager: ObservableObject {
         autoScanOnFileAdded = true
         showNotifications = true
         scanArchives = true
-        maxScanSize = 100
         startAtLogin = false
         hideMenuBarIcon = false
         launchClamdWithSudo = false
@@ -169,7 +197,7 @@ class SettingsManager: ObservableObject {
     }
 
     private func enableLoginItem() {
-        let appPath = Bundle.main.bundlePath ?? ""
+        let appPath = Bundle.main.bundlePath
         let script = """
         tell application "System Events"
             if not (exists login item "ClamGUI") then

@@ -20,6 +20,7 @@ struct WatchdogView: View {
     @State private var recordCount: Int = 0
     @State private var showingFoundThreats = false
     @State private var hasShownInitialModal = false  // Track if we've shown modal for initial scan threats
+    @State private var queueStatusTask: Task<Void, Never>?
     
     // Auto-start watching once a scanner backend is ready and a directory is set.
     @State private var shouldAutoStart = false
@@ -56,13 +57,15 @@ struct WatchdogView: View {
                 // Watch toggle
                 Toggle("Active", isOn: $isWatching)
                     .toggleStyle(.switch)
-                    .disabled(settingsManager.watchDirectory.isEmpty)
+                    .disabled(settingsManager.watchDirectory.isEmpty || !clamAVManager.isScannerReady)
             }
             
             .onChange(of: clamAVManager.isScannerReady) { isReady in
                 if isReady && !settingsManager.watchDirectory.isEmpty && !shouldAutoStart {
                     shouldAutoStart = true
                     isWatching = true
+                } else if !isReady && isWatching {
+                    isWatching = false
                 }
             }
             
@@ -191,6 +194,10 @@ struct WatchdogView: View {
         .onAppear {
             setupDirectoryWatcher()
         }
+        .onDisappear {
+            queueStatusTask?.cancel()
+            queueStatusTask = nil
+        }
         .onChange(of: isWatching) { newValue in
             if newValue {
                 directoryWatcher.startWatching()
@@ -199,7 +206,16 @@ struct WatchdogView: View {
             }
         }
         .onChange(of: settingsManager.watchDirectory) { _ in
+            let shouldResume = isWatching
+            if isWatching {
+                isWatching = false
+                directoryWatcher.stopWatching()
+            }
+            resetWatchdogCounters()
             setupDirectoryWatcher()
+            if shouldResume, !settingsManager.watchDirectory.isEmpty, clamAVManager.isScannerReady {
+                isWatching = true
+            }
         }
         .sheet(isPresented: $showingFoundThreats) {
             FoundThreatsSheet()
@@ -242,7 +258,11 @@ struct WatchdogView: View {
     }
 
     private func setupDirectoryWatcher() {
-        guard !settingsManager.watchDirectory.isEmpty else { return }
+        guard !settingsManager.watchDirectory.isEmpty else {
+            queueStatusTask?.cancel()
+            queueStatusTask = nil
+            return
+        }
 
         directoryWatcher.watchDirectory = settingsManager.watchDirectory
 
@@ -273,13 +293,15 @@ struct WatchdogView: View {
         }
 
         // Update UI with queue status
-        updateQueueStatus()
+        startQueueStatusUpdates()
     }
 
     /// Update queue status display and threat counts
-    private func updateQueueStatus() {
-        Task {
-            while true {
+    private func startQueueStatusUpdates() {
+        guard queueStatusTask == nil else { return }
+
+        queueStatusTask = Task {
+            while !Task.isCancelled {
                 await MainActor.run {
                     currentScanningFile = QueueManager.shared.currentScanningFile
                     queueStatus = QueueManager.shared.scanStatus
@@ -292,6 +314,17 @@ struct WatchdogView: View {
                 }
             }
         }
+    }
+
+    private func resetWatchdogCounters() {
+        filesScanned = 0
+        filesSkipped = 0
+        threatsCount = 0
+        recordCount = 0
+        currentScanningFile = nil
+        queueStatus = .idle
+        hasShownInitialModal = false
+        shouldAutoStart = false
     }
 
     /// Update threats count and record count
@@ -309,7 +342,10 @@ struct WatchdogView: View {
 
     /// Scan all existing files in the watched directory
     private func scanExistingFiles() async {
-        guard let _ = URL(string: settingsManager.watchDirectory) else { return }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: settingsManager.watchDirectory, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return }
+
         let folderId: Int64 = 1  // Single folder, ID = 1
 
         let fileManager = FileManager.default
@@ -344,12 +380,9 @@ struct WatchdogView: View {
 
                 // Scan the file
                 let result = await clamAVManager.scanFile(at: fileURL.path)
-                print("🔍 scanExistingFiles: path=\(fileURL.path), status=\(result.status), threat=\(result.threatName ?? "nil")")
                 filesScannedCount += 1
                 
-                // Record result in database (single table!)
                 let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
-                print("📝 Recording: path=\(fileURL.path), status=\(status.rawValue), folderId=\(folderId)")
                 await ScanResultsDatabase.shared.recordScan(
                     path: fileURL.path,
                     folderId: folderId,
@@ -357,30 +390,15 @@ struct WatchdogView: View {
                     threatName: result.threatName
                 )
                 
-                // Verify record was created
-                let stillNeedsScan = ScanResultsDatabase.shared.needsScan(fileURL.path, folderId: folderId)
-                print("🔍 After record: stillNeedsScan=\(stillNeedsScan)")
-                
-                // Check infected files
-                let infected = ScanResultsDatabase.shared.getInfectedFiles(folderId: folderId)
-                print("🔍 After record: infected count=\(infected.count)")
-                for inf in infected {
-                    print("   - \(inf.path) -> \(inf.status.rawValue)")
-                }
-                
                 // If infected, show modal (only once for initial scan)
                 if case .infected = result.status {
-                    print("🦠 scanExistingFiles: Infected! hasShownInitialModal=\(hasShownInitialModal)")
                     updateThreatsCount()
                     if !hasShownInitialModal {
                         hasShownInitialModal = true
-                        print("🦠 scanExistingFiles: Calling handleThreatDetected")
                         await ThreatActionHandler.shared.handleThreatDetected(
                             filePath: fileURL.path,
                             threatName: result.threatName ?? "Unknown"
                         )
-                    } else {
-                        print("🦠 scanExistingFiles: NOT calling handleThreatDetected, already shown")
                     }
                 }
             }
@@ -398,6 +416,11 @@ struct WatchdogView: View {
     }
 
     private func scanNewFile(at url: URL) async {
+        guard settingsManager.autoScanOnFileAdded else {
+            print("Auto-scan disabled, ignoring new file: \(url.path)")
+            return
+        }
+
         let folderId: Int64 = 1  // Single folder, ID = 1
 
         // Check if file needs scanning

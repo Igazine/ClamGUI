@@ -62,7 +62,6 @@ Open the "Settings" tab to:
 
 - Configure the watch directory
 - Enable/disable notifications
-- Set maximum scan file size
 - Enable auto-start at login
 - Update virus definitions
 

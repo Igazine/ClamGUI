@@ -135,27 +135,6 @@ class ScanResultsDatabase: @unchecked Sendable {
     
     /// Get all infected files for a folder
     func getInfectedFiles(folderId: Int64) -> [ScanResultRecord] {
-        // DEBUG: Dump ALL rows to see what's actually in the table
-        var debugStmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, "SELECT * FROM scan_results", -1, &debugStmt, nil) == SQLITE_OK {
-            print("🔍 DUMPING scan_results TABLE:")
-            var hasRows = false
-            while sqlite3_step(debugStmt) == SQLITE_ROW {
-                hasRows = true
-                let id = sqlite3_column_int64(debugStmt, 0)
-                let path = sqlite3_column_text(debugStmt, 1).map { String(cString: $0) } ?? "NULL"
-                let fid = sqlite3_column_int64(debugStmt, 2)
-                let status = sqlite3_column_text(debugStmt, 3).map { String(cString: $0) } ?? "NULL"
-                let threat = sqlite3_column_text(debugStmt, 4).map { String(cString: $0) } ?? "NULL"
-                print("  ROW: id=\(id), path=\(path), folder_id=\(fid), status='\(status)', threat='\(threat)'")
-            }
-            if !hasRows {
-                print("  (TABLE IS EMPTY)")
-            }
-            sqlite3_finalize(debugStmt)
-        }
-        // END DEBUG
-
         let sql = """
         SELECT id, path, folder_id, status, threat_name, scan_timestamp, file_size, modification_date
         FROM scan_results
@@ -174,15 +153,11 @@ class ScanResultsDatabase: @unchecked Sendable {
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_int64(statement, 1, folderId)
         
-        print("📊 getInfectedFiles: Querying folderId=\(folderId)")
-        var rowCount = 0
         while sqlite3_step(statement) == SQLITE_ROW {
-            rowCount += 1
             let id = sqlite3_column_int64(statement, 0)
             let path = sqlite3_column_text(statement, 1).map { String(cString: $0) } ?? "NULL"
             let statusStr = sqlite3_column_text(statement, 3).map { String(cString: $0) } ?? "NULL"
             let threat = sqlite3_column_text(statement, 4).map { String(cString: $0) } ?? "NULL"
-            print("📊 Row \(rowCount): id=\(id), path='\(path)', status='\(statusStr)', threat='\(threat)'")
             
             let record = ScanResultRecord(
                 id: id,
@@ -196,12 +171,9 @@ class ScanResultsDatabase: @unchecked Sendable {
             )
             if record.status == .infected {
                 results.append(record)
-            } else {
-                print("⚠️ Row status '\(statusStr)' is not 'infected', skipping")
             }
         }
         
-        print("📊 getInfectedFiles: Found \(results.count) infected out of \(rowCount) total rows")
         return results
     }
     

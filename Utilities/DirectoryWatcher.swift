@@ -42,7 +42,14 @@ class DirectoryWatcher: ObservableObject {
     func startWatching() {
         guard !watchDirectory.isEmpty, !isWatching else { return }
 
-        performPoll()
+        guard let initialFiles = snapshotFiles() else {
+            print("Cannot watch unavailable directory: \(watchDirectory)")
+            return
+        }
+
+        knownFilesLock.lock()
+        knownFiles = initialFiles
+        knownFilesLock.unlock()
         
         isWatching = true
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
@@ -67,32 +74,10 @@ class DirectoryWatcher: ObservableObject {
     }
 
     private func performPoll() {
-        let directoryURL = URL(fileURLWithPath: watchDirectory)
-        guard let enumerator = FileManager.default.enumerator(
-            at: directoryURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
-            options: [.skipsHiddenFiles],
-            errorHandler: nil
-        ) else {
+        guard let currentFiles = snapshotFiles() else {
             return
         }
 
-        var currentFiles: [String: FileState] = [:]
-        
-        for case let fileURL as URL in enumerator {
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) && isDirectory.boolValue {
-                continue
-            }
-            
-            guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path) else { continue }
-            
-            let modDate = attrs[.modificationDate] as? Date ?? Date.distantPast
-            let fileSize = attrs[.size] as? UInt64 ?? 0
-            
-            currentFiles[fileURL.path] = FileState(modificationDate: modDate, size: fileSize)
-        }
-        
         knownFilesLock.lock()
         
         for (path, state) in currentFiles {
@@ -111,6 +96,37 @@ class DirectoryWatcher: ObservableObject {
         
         knownFiles = currentFiles
         knownFilesLock.unlock()
+    }
+
+    private func snapshotFiles() -> [String: FileState]? {
+        let directoryURL = URL(fileURLWithPath: watchDirectory)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue,
+              let enumerator = FileManager.default.enumerator(
+            at: directoryURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles],
+            errorHandler: nil
+        ) else { return nil }
+
+        var files: [String: FileState] = [:]
+
+        for case let fileURL as URL in enumerator {
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) && isDirectory.boolValue {
+                continue
+            }
+
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path) else { continue }
+
+            let modDate = attrs[.modificationDate] as? Date ?? Date.distantPast
+            let fileSize = attrs[.size] as? UInt64 ?? 0
+
+            files[fileURL.path] = FileState(modificationDate: modDate, size: fileSize)
+        }
+
+        return files
     }
 
     private func handleFileAdded(path: String) {

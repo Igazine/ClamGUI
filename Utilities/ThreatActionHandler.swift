@@ -101,12 +101,11 @@ class ThreatActionHandler: ObservableObject {
         
         switch action {
         case .quarantine:
-            do {
-                try await QuarantineManager.shared.quarantineFile(at: filePath, threatName: threatName)
+            if await QuarantineManager.shared.quarantineFile(at: filePath, threatName: threatName) {
                 print("✅ Quarantined: \(filePath)")
                 await updateThreatRecord(filePath: filePath, action: "quarantined")
-            } catch {
-                print("⚠️ Failed to quarantine: \(error.localizedDescription)")
+            } else {
+                print("⚠️ Failed to quarantine: \(filePath)")
             }
 
         case .doNothing:
@@ -127,10 +126,10 @@ class ThreatActionHandler: ObservableObject {
         let fileManager = FileManager.default
         
         do {
-            var attributes = try fileManager.attributesOfItem(atPath: filePath)
+            let attributes = try fileManager.attributesOfItem(atPath: filePath)
             if let permissions = attributes[.posixPermissions] as? NSNumber {
                 // Remove execute bits (mask out 0o111)
-                var newPermissions = permissions.intValue & ~0o111
+                let newPermissions = permissions.intValue & ~0o111
                 try fileManager.setAttributes([.posixPermissions: NSNumber(value: newPermissions)], ofItemAtPath: filePath)
                 print("✅ Cleared executable bit: \(filePath)")
             }

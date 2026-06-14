@@ -73,7 +73,6 @@ This document outlines the features and requirements for ClamGUI.
 |---------|--------|-------|
 | Watch directory setting | ✅ | For Watchdog tab |
 | Auto-scan on file added | ✅ | Toggle in Settings |
-| Max scan size limit | ✅ | Configurable in MB |
 | Notifications toggle | ✅ | Enable/disable alerts |
 | Start at login | ✅ | Via AppleScript |
 | Menu bar icon toggle | ✅ | Show/hide option |
