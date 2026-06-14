@@ -152,8 +152,8 @@ class DirectoryWatcher: ObservableObject {
 
     func updateDatabaseStats() async {
         let folderId: Int64 = 1
-        let count = await ScanResultsDatabase.shared.getRecordCount(folderId: folderId)
-        let threats = await ScanResultsDatabase.shared.getInfectedFiles(folderId: folderId).count
+        let count = ScanResultsDatabase.shared.getRecordCount(folderId: folderId)
+        let threats = ScanResultsDatabase.shared.getInfectedFiles(folderId: folderId).count
         await MainActor.run {
             self.recordCount = count
             self.threatsCount = threats

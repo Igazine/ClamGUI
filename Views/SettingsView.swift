@@ -235,82 +235,13 @@ struct SettingsView: View {
                     }
                 }
 
-                HStack {
-                    Text("Legacy Daemon")
-                    Spacer()
-
-                    if clamAVManager.activeScannerName == ScannerBackend.clamd.rawValue {
-                        Label("Running", systemImage: "play.circle")
-                            .foregroundColor(.green)
-                    } else if clamAVManager.isClamAVInstalled {
-                        Label("Inactive", systemImage: "stop.circle")
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text("—")
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                // Daemon controls
-                if clamAVManager.isClamAVInstalled && clamAVManager.activeScannerName != ScannerBackend.nativeLibClamAV.rawValue {
+                if clamAVManager.activeScannerName == ScannerBackend.clamd.rawValue {
                     HStack {
-                        if clamAVManager.activeScannerName == ScannerBackend.clamd.rawValue {
-                            Button(action: {
-                                Task {
-                                    await clamAVManager.restartClamd()
-                                }
-                            }) {
-                                HStack {
-                                    Image(systemName: "arrow.clockwise")
-                                    Text("Restart Daemon")
-                                }
-                            }
-                            .disabled(clamAVManager.isStartingClamd)
-
-                            Button(action: {
-                                Task {
-                                    await clamAVManager.stopClamd()
-                                }
-                            }) {
-                                HStack {
-                                    Image(systemName: "stop.fill")
-                                    Text("Stop Daemon")
-                                }
-                            }
-                            .foregroundColor(.red)
-                            .disabled(clamAVManager.isStartingClamd)
-                        } else {
-                            Button(action: {
-                                Task {
-                                    await clamAVManager.startClamd()
-                                }
-                            }) {
-                                HStack {
-                                    if clamAVManager.isStartingClamd {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                    } else {
-                                        Image(systemName: "play.fill")
-                                    }
-                                    Text(clamAVManager.isStartingClamd ? "Starting..." : "Start Daemon")
-                                }
-                                .frame(minWidth: 120)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(clamAVManager.isStartingClamd)
-                        }
+                        Text("Compatibility Backend")
+                        Spacer()
+                        Label("Legacy clamd", systemImage: "socket")
+                            .foregroundColor(.secondary)
                     }
-                    
-                    // Show error message if startup failed
-                    if let errorMessage = clamAVManager.clamdStartError {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundColor(.red)
-                    }
-
-                    Text("Daemon runs as your user account. No sudo required.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
 
                 if !clamAVManager.isClamAVInstalled {

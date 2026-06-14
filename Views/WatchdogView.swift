@@ -21,7 +21,7 @@ struct WatchdogView: View {
     @State private var showingFoundThreats = false
     @State private var hasShownInitialModal = false  // Track if we've shown modal for initial scan threats
     
-    // Junction n12 logic: If Daemon is running and Directory is set, start watching automatically
+    // Auto-start watching once a scanner backend is ready and a directory is set.
     @State private var shouldAutoStart = false
 
     var body: some View {
@@ -59,17 +59,16 @@ struct WatchdogView: View {
                     .disabled(settingsManager.watchDirectory.isEmpty)
             }
             
-            // Daemon Gate / Junction n12 Logic
-            .onChange(of: clamAVManager.isClamdRunning) { isRunning in
-                if isRunning && !settingsManager.watchDirectory.isEmpty && !shouldAutoStart {
+            .onChange(of: clamAVManager.isScannerReady) { isReady in
+                if isReady && !settingsManager.watchDirectory.isEmpty && !shouldAutoStart {
                     shouldAutoStart = true
                     isWatching = true
                 }
             }
             
-            // Ensure we check on appear too (in case it's already running)
+            // Ensure we check on appear too in case the scanner was ready before this view loaded.
             .onAppear {
-                if clamAVManager.isClamdRunning && !settingsManager.watchDirectory.isEmpty && !shouldAutoStart {
+                if clamAVManager.isScannerReady && !settingsManager.watchDirectory.isEmpty && !shouldAutoStart {
                     shouldAutoStart = true
                     isWatching = true
                 }
@@ -289,7 +288,7 @@ struct WatchdogView: View {
                 
                 // Periodically refresh threats count
                 if isWatching {
-                    await updateThreatsCount()
+                    updateThreatsCount()
                 }
             }
         }
@@ -299,8 +298,8 @@ struct WatchdogView: View {
     private func updateThreatsCount() {
         let folderId: Int64 = 1
         Task {
-            let threats = await ScanResultsDatabase.shared.getInfectedFiles(folderId: folderId)
-            let records = await ScanResultsDatabase.shared.getRecordCount(folderId: folderId)
+            let threats = ScanResultsDatabase.shared.getInfectedFiles(folderId: folderId)
+            let records = ScanResultsDatabase.shared.getRecordCount(folderId: folderId)
             await MainActor.run {
                 threatsCount = threats.count
                 recordCount = records
@@ -336,7 +335,7 @@ struct WatchdogView: View {
                 }
                 
                 // Check if file needs scanning
-                let needsScan = await ScanResultsDatabase.shared.needsScan(fileURL.path, folderId: folderId)
+                let needsScan = ScanResultsDatabase.shared.needsScan(fileURL.path, folderId: folderId)
 
                 if !needsScan {
                     filesSkippedCount += 1
@@ -359,11 +358,11 @@ struct WatchdogView: View {
                 )
                 
                 // Verify record was created
-                let stillNeedsScan = await ScanResultsDatabase.shared.needsScan(fileURL.path, folderId: folderId)
+                let stillNeedsScan = ScanResultsDatabase.shared.needsScan(fileURL.path, folderId: folderId)
                 print("🔍 After record: stillNeedsScan=\(stillNeedsScan)")
                 
                 // Check infected files
-                let infected = await ScanResultsDatabase.shared.getInfectedFiles(folderId: folderId)
+                let infected = ScanResultsDatabase.shared.getInfectedFiles(folderId: folderId)
                 print("🔍 After record: infected count=\(infected.count)")
                 for inf in infected {
                     print("   - \(inf.path) -> \(inf.status.rawValue)")
@@ -402,7 +401,7 @@ struct WatchdogView: View {
         let folderId: Int64 = 1  // Single folder, ID = 1
 
         // Check if file needs scanning
-        let needsScan = await ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId)
+        let needsScan = ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId)
 
         if !needsScan {
             print("Skipping unchanged file: \(url.path)")

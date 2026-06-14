@@ -23,14 +23,6 @@ struct ClamGUIApp: App {
                     .environmentObject(settingsManager)
                     .environmentObject(clamAVManager)
                     .environmentObject(updaterManager)
-                    .onAppear {
-                        Task {
-                            print("🔍 Checking ClamAV installation...")
-                            await clamAVManager.checkClamAVInstallation()
-                            print("📊 ClamAV Status: installed=\(clamAVManager.isClamAVInstalled), scannerReady=\(clamAVManager.isScannerReady)")
-                            await clamAVManager.checkVirusDefinitions()
-                        }
-                    }
             }
         }
         .windowStyle(.hiddenTitleBar)
@@ -69,19 +61,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // Stop clamd daemon and send SHUTDOWN command before quitting
         Task {
-            await ClamAVManager.shared.stopClamd()
-            ClamAVManager.shared.closeSocketConnection()
+            await ClamAVManager.shared.shutdownScannerRuntime()
         }
         return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Ensure clamd is stopped and SHUTDOWN command was sent
         Task { @MainActor in
-            await ClamAVManager.shared.stopClamd()
-            ClamAVManager.shared.closeSocketConnection()
+            await ClamAVManager.shared.shutdownScannerRuntime()
         }
     }
 }

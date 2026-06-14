@@ -2,8 +2,7 @@
 //  ClamAVManager.swift
 //  ClamGUI
 //
-//  Manages connection to ClamAV daemon (clamd) via local socket
-//  Direct process management (no launchd)
+//  Manages ClamGUI's active ClamAV scanner runtime.
 //
 
 import Foundation
@@ -23,8 +22,8 @@ class ClamAVManager: ObservableObject {
     @Published var lastScanResult: ScanResult?
     @Published var virusDefinitionsVersion: String = "Unknown"
     @Published var virusDefinitionsOutdated = false
-    @Published var isStartingClamd = false  // Spinner for daemon startup
-    @Published var clamdStartError: String? = nil  // Error message if startup fails
+    @Published var isStartingClamd = false
+    @Published var clamdStartError: String? = nil
     @Published var activeScannerName: String = "Unavailable"
     @Published var scannerStatusMessage: String = "Scanner not initialized"
     @Published var isUpdatingVirusDefinitions = false
@@ -138,11 +137,25 @@ class ClamAVManager: ObservableObject {
     // MARK: - Socket Connection
     // Note: Socket connection is now handled by QueueManager
 
-    /// Close socket connection (called on app termination)
+    /// Close the active scanner backend.
     func closeSocketConnection() {
         Task {
             await ScanEngineManager.shared.shutdown()
         }
+    }
+
+    /// Shut down the active scanner runtime without probing or starting fallbacks.
+    func shutdownScannerRuntime() async {
+        if clamdProcess?.isRunning == true {
+            await stopClamd()
+            return
+        }
+
+        await ScanEngineManager.shared.shutdown()
+        isScannerReady = false
+        isClamdRunning = false
+        activeScannerName = "Unavailable"
+        scannerStatusMessage = "Scanner shut down"
     }
 
     // MARK: - File Scanning

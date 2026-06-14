@@ -27,15 +27,15 @@ struct AboutView: View {
             }
 
             // Description
-            Text("A graphical user interface for ClamAV antivirus on macOS")
+            Text("A native macOS front-end for ClamAV antivirus")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
 
             // Info cards
             VStack(spacing: 15) {
-                InfoRow(icon: "cpu", title: "Backend", value: "ClamAV Daemon")
-                InfoRow(icon: "socket", title: "Connection", value: "Unix Domain Socket")
+                InfoRow(icon: "cpu", title: "Backend", value: "Native libclamav")
+                InfoRow(icon: "internaldrive", title: "Database", value: "App-managed signatures")
                 InfoRow(icon: "eye", title: "Watchdog", value: "Directory Monitoring")
                 InfoRow(icon: "bell", title: "Notifications", value: "Native macOS")
             }
@@ -47,7 +47,7 @@ struct AboutView: View {
             VStack(spacing: 12) {
                 LinkButton(
                     title: "GitHub Repository",
-                    url: "https://github.com/clamgui/clamgui",
+                    url: "https://github.com/Igazine/ClamGUI",
                     icon: "github"
                 )
 
@@ -59,7 +59,7 @@ struct AboutView: View {
 
                 LinkButton(
                     title: "Report an Issue",
-                    url: "https://github.com/clamgui/clamgui/issues",
+                    url: "https://github.com/Igazine/ClamGUI/issues",
                     icon: "exclamationmark.bubble"
                 )
             }
@@ -71,7 +71,7 @@ struct AboutView: View {
                 Text("License")
                     .font(.headline)
 
-                Text("MIT License")
+                Text("GNU GPL v2")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
 

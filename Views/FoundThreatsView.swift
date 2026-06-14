@@ -71,7 +71,7 @@ struct FoundThreatsView: View {
     private func loadThreats() {
         Task {
             let folderId: Int64 = 1
-            let records = await ScanResultsDatabase.shared.getInfectedFiles(folderId: folderId)
+            let records = ScanResultsDatabase.shared.getInfectedFiles(folderId: folderId)
             await MainActor.run {
                 threats = records.map { ThreatRecord(from: $0) }
                 isLoading = false

@@ -102,7 +102,7 @@ struct ScanView: View {
                             .frame(minWidth: 150)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(selectedFileURL == nil || !clamAVManager.isClamAVInstalled || clamAVManager.isScanning)
+                        .disabled(selectedFileURL == nil || !clamAVManager.isScannerReady || clamAVManager.isScanning)
                     }
                 }
 
@@ -205,7 +205,7 @@ struct ScanView: View {
     /// Check if file needs to be scanned (not in DB or modified)
     private func checkIfNeedsScan(url: URL) async -> Bool {
         let folderId: Int64 = 1
-        return await ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId)
+        return ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId)
     }
 
     /// Show existing scan result from database
