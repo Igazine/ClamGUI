@@ -55,12 +55,16 @@ Required lifecycle:
 2. Create an engine with `cl_engine_new()`.
 3. Load signatures with `cl_load(databasePath, engine, &signatureCount, CL_DB_STDOPT)`.
 4. Compile with `cl_engine_compile(engine)`.
-5. Scan files with `cl_scanfile()` or preferably the newer `cl_scanfile_ex()`.
+5. Scan files with `cl_scanfile_ex()` and read the `cl_verdict_t` output.
 6. Free the engine with `cl_engine_free()` on shutdown or reload.
 
 The ClamAV docs also note that `libclamav` is thread-safe. ClamGUI should still
 serialize engine reloads and protect the engine pointer behind an actor or a
 dedicated queue so scans cannot race a reload/free.
+
+The current native wrapper uses `cl_scanfile_ex()`. This matters because the
+newer API returns scan success or failure separately from the malware verdict;
+callers must check `cl_verdict_t`, not only the return code.
 
 ## Signature Databases
 

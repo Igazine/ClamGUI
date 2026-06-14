@@ -18,7 +18,20 @@ actor LibClamAVScanner: MalwareScanner {
         let clLoad: @convention(c) (UnsafePointer<CChar>?, OpaquePointer?, UnsafeMutablePointer<UInt32>?, UInt32) -> Int32
         let clEngineCompile: @convention(c) (OpaquePointer?) -> Int32
         let clEngineFree: @convention(c) (OpaquePointer?) -> Int32
-        let clScanFile: @convention(c) (UnsafePointer<CChar>, UnsafeMutablePointer<UnsafePointer<CChar>?>?, UnsafeMutablePointer<CUnsignedLong>?, OpaquePointer?, UnsafeMutableRawPointer?) -> Int32
+        let clScanFileEx: @convention(c) (
+            UnsafePointer<CChar>,
+            UnsafeMutablePointer<Int32>?,
+            UnsafeMutablePointer<UnsafePointer<CChar>?>?,
+            UnsafeMutablePointer<UInt64>?,
+            OpaquePointer?,
+            UnsafeMutableRawPointer?,
+            UnsafeMutableRawPointer?,
+            UnsafePointer<CChar>?,
+            UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?,
+            UnsafePointer<CChar>?,
+            UnsafePointer<CChar>?,
+            UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+        ) -> Int32
         let clStrError: @convention(c) (Int32) -> UnsafePointer<CChar>?
         let clRetDbDir: @convention(c) () -> UnsafePointer<CChar>?
     }
@@ -77,22 +90,44 @@ actor LibClamAVScanner: MalwareScanner {
         }
 
         var virusNamePointer: UnsafePointer<CChar>?
-        var scanned: CUnsignedLong = 0
+        var verdict: Int32 = LibClamAVConstants.verdictNothingFound
+        var scanned: UInt64 = 0
         var options = LibClamAVScanOptions.default
 
         let result = path.withCString { pathPointer in
             withUnsafeMutablePointer(to: &options) { optionsPointer in
-                api.clScanFile(pathPointer, &virusNamePointer, &scanned, engine, UnsafeMutableRawPointer(optionsPointer))
+                api.clScanFileEx(
+                    pathPointer,
+                    &verdict,
+                    &virusNamePointer,
+                    &scanned,
+                    engine,
+                    UnsafeMutableRawPointer(optionsPointer),
+                    nil,
+                    nil,
+                    nil,
+                    nil,
+                    nil,
+                    nil
+                )
             }
         }
 
-        switch result {
-        case LibClamAVConstants.clean:
+        switch verdict {
+        case LibClamAVConstants.verdictNothingFound,
+             LibClamAVConstants.verdictTrusted:
             return ClamAVManager.ScanResult(filePath: path, status: .clean, threatName: nil, timestamp: Date())
-        case LibClamAVConstants.virus:
+        case LibClamAVConstants.verdictStrongIndicator,
+             LibClamAVConstants.verdictPotentiallyUnwanted:
             let threatName = virusNamePointer.map { String(cString: $0) } ?? "Unknown"
             return ClamAVManager.ScanResult(filePath: path, status: .infected, threatName: threatName, timestamp: Date())
         default:
+            break
+        }
+
+        if result == LibClamAVConstants.success {
+            return ClamAVManager.ScanResult(filePath: path, status: .clean, threatName: nil, timestamp: Date())
+        } else {
             return ClamAVManager.ScanResult(filePath: path, status: .error, threatName: errorMessage(result, api: api), timestamp: Date())
         }
     }
@@ -134,7 +169,7 @@ actor LibClamAVScanner: MalwareScanner {
             clLoad: try symbol("cl_load", in: handle),
             clEngineCompile: try symbol("cl_engine_compile", in: handle),
             clEngineFree: try symbol("cl_engine_free", in: handle),
-            clScanFile: try symbol("cl_scanfile", in: handle),
+            clScanFileEx: try symbol("cl_scanfile_ex", in: handle),
             clStrError: try symbol("cl_strerror", in: handle),
             clRetDbDir: try symbol("cl_retdbdir", in: handle)
         )
@@ -214,11 +249,13 @@ actor LibClamAVScanner: MalwareScanner {
 }
 
 private enum LibClamAVConstants {
-    static let clean: Int32 = 0
     static let success: Int32 = 0
-    static let virus: Int32 = 1
     static let initDefault: UInt32 = 0
     static let dbStandardOptions: UInt32 = 0x2 | 0x8 | 0x2000
+    static let verdictNothingFound: Int32 = 0
+    static let verdictTrusted: Int32 = 1
+    static let verdictStrongIndicator: Int32 = 2
+    static let verdictPotentiallyUnwanted: Int32 = 3
 }
 
 private struct LibClamAVScanOptions {
