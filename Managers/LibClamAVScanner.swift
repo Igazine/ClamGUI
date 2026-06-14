@@ -51,13 +51,13 @@ actor LibClamAVScanner: MalwareScanner {
             }
 
             guard loadResult == LibClamAVConstants.success else {
-                api.clEngineFree(newEngine)
+                _ = api.clEngineFree(newEngine)
                 throw MalwareScannerError.signatureLoadFailed("Could not load ClamAV signatures from \(dbPath): \(errorMessage(loadResult, api: api))")
             }
 
             let compileResult = api.clEngineCompile(newEngine)
             guard compileResult == LibClamAVConstants.success else {
-                api.clEngineFree(newEngine)
+                _ = api.clEngineFree(newEngine)
                 throw MalwareScannerError.engineCompileFailed("Could not compile ClamAV engine: \(errorMessage(compileResult, api: api))")
             }
 
@@ -66,7 +66,7 @@ actor LibClamAVScanner: MalwareScanner {
             self.signatureCount = loadedSignatures
             self.databasePath = dbPath
         } catch {
-            api.clEngineFree(newEngine)
+            _ = api.clEngineFree(newEngine)
             throw error
         }
     }
@@ -99,7 +99,7 @@ actor LibClamAVScanner: MalwareScanner {
 
     func reloadSignatures() async throws {
         if let engine {
-            api?.clEngineFree(engine)
+            _ = api?.clEngineFree(engine)
         }
         engine = nil
         signatureCount = 0
@@ -109,7 +109,7 @@ actor LibClamAVScanner: MalwareScanner {
 
     func shutdown() async {
         if let engine {
-            api?.clEngineFree(engine)
+            _ = api?.clEngineFree(engine)
         }
         if let handle = api?.handle {
             dlclose(handle)

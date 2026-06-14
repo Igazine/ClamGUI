@@ -18,6 +18,7 @@ class ClamAVManager: ObservableObject {
 
     @Published var isClamAVInstalled = false
     @Published var isClamdRunning = false
+    @Published var isScannerReady = false
     @Published var isScanning = false
     @Published var lastScanResult: ScanResult?
     @Published var virusDefinitionsVersion: String = "Unknown"
@@ -74,7 +75,8 @@ class ClamAVManager: ObservableObject {
 
         if status.isReady {
             isClamAVInstalled = true
-            isClamdRunning = true
+            isScannerReady = true
+            isClamdRunning = status.backend == .clamd
             activeScannerName = status.backend?.rawValue ?? "Unknown"
             scannerStatusMessage = status.message
             return
@@ -94,6 +96,7 @@ class ClamAVManager: ObservableObject {
             if fileExists(at: path) {
                 isClamAVInstalled = true
                 isClamdRunning = false
+                isScannerReady = false
                 activeScannerName = "Unavailable"
                 scannerStatusMessage = status.message
                 print("ClamAV daemon binary found at: \(path), but ClamGUI daemon not running")
@@ -105,6 +108,7 @@ class ClamAVManager: ObservableObject {
         if commandExists("clamscan") {
             isClamAVInstalled = true
             isClamdRunning = false
+            isScannerReady = false
             activeScannerName = "Unavailable"
             scannerStatusMessage = status.message
             print("ClamAV installed (clamscan found) but ClamGUI daemon not running")
@@ -113,6 +117,7 @@ class ClamAVManager: ObservableObject {
 
         isClamAVInstalled = false
         isClamdRunning = false
+        isScannerReady = false
         activeScannerName = "Unavailable"
         scannerStatusMessage = status.message
         print("ClamAV not detected on system")
@@ -475,8 +480,12 @@ class ClamAVManager: ObservableObject {
             }
 
             // Verify it started successfully
-            await checkClamAVInstallation()
             try? await ScanEngineManager.shared.useLegacyClamdScanner()
+            isClamAVInstalled = true
+            isScannerReady = true
+            isClamdRunning = true
+            activeScannerName = ScannerBackend.clamd.rawValue
+            scannerStatusMessage = "Legacy clamd scanner ready"
             
             isStartingClamd = false
 
@@ -495,6 +504,7 @@ class ClamAVManager: ObservableObject {
             // Even if not running, we should check status and maybe stop queue
             isClamdRunning = false
             QueueManager.shared.suspendQueue()
+            await checkClamAVInstallation()
             return
         }
 

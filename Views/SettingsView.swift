@@ -211,8 +211,8 @@ struct SettingsView: View {
                     Text("Scanner")
                     Spacer()
 
-                    Label(clamAVManager.activeScannerName, systemImage: clamAVManager.isClamdRunning ? "shield.checkered" : "exclamationmark.triangle")
-                        .foregroundColor(clamAVManager.isClamdRunning ? .green : .orange)
+                    Label(clamAVManager.activeScannerName, systemImage: clamAVManager.isScannerReady ? "shield.checkered" : "exclamationmark.triangle")
+                        .foregroundColor(clamAVManager.isScannerReady ? .green : .orange)
                 }
 
                 Text(clamAVManager.scannerStatusMessage)
@@ -220,12 +220,15 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
 
                 HStack {
-                    Text("ClamAV Components")
+                    Text("Scanner Runtime")
                     Spacer()
 
-                    if clamAVManager.isClamAVInstalled {
-                        Label("Available", systemImage: "checkmark.circle")
+                    if clamAVManager.isScannerReady {
+                        Label("Ready", systemImage: "checkmark.circle")
                             .foregroundColor(.green)
+                    } else if clamAVManager.isClamAVInstalled {
+                        Label("Available", systemImage: "checkmark.circle")
+                            .foregroundColor(.orange)
                     } else {
                         Label("Unavailable", systemImage: "exclamationmark.triangle")
                             .foregroundColor(.red)

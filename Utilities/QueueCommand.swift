@@ -32,7 +32,7 @@ struct ScanCommand: QueueCommand {
     let id: UUID = UUID()
     let priority: CommandPriority
     let filePath: String
-    let completion: (ClamAVManager.ScanResult) -> Void
+    let completion: @Sendable (ClamAVManager.ScanResult) -> Void
 
     var description: String { "SCAN \(filePath)" }
 }
@@ -49,7 +49,7 @@ struct ControlCommand: QueueCommand {
     let id: UUID = UUID()
     let priority: CommandPriority
     let type: CommandType
-    let completion: ((String) -> Void)?
+    let completion: (@Sendable (String) -> Void)?
 
     var description: String {
         switch type {

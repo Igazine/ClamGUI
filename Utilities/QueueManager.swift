@@ -80,13 +80,13 @@ class QueueManager: @unchecked Sendable {
     // MARK: - Public API: Manual Scanning
     
     /// Add a file to the scan queue with high priority
-    func scanFile(_ filePath: String, completion: @escaping (ClamAVManager.ScanResult) -> Void) {
+    func scanFile(_ filePath: String, completion: @escaping @Sendable (ClamAVManager.ScanResult) -> Void) {
         let command = ScanCommand(priority: .normal, filePath: filePath, completion: completion)
         enqueue(command)
     }
     
     /// Add a file to the scan queue with background priority
-    func scanFileBackground(_ filePath: String, completion: @escaping (ClamAVManager.ScanResult?) -> Void) {
+    func scanFileBackground(_ filePath: String, completion: @escaping @Sendable (ClamAVManager.ScanResult?) -> Void) {
         // We wrap the scan result in an optional to match existing signatures, 
         // but internally we treat it as a definite result.
         let cmd = ScanCommand(priority: .low, filePath: filePath) { result in
@@ -98,7 +98,7 @@ class QueueManager: @unchecked Sendable {
     // MARK: - Public API: Control Commands
     
     /// Add a control command (Reload, Version, Stats, etc.)
-    func enqueueControlCommand(type: ControlCommand.CommandType, priority: CommandPriority = .high, completion: ((String) -> Void)? = nil) {
+    func enqueueControlCommand(type: ControlCommand.CommandType, priority: CommandPriority = .high, completion: (@Sendable (String) -> Void)? = nil) {
         let command = ControlCommand(priority: priority, type: type, completion: completion)
         enqueue(command)
     }
@@ -265,7 +265,7 @@ class QueueManager: @unchecked Sendable {
         // If SHUTDOWN, the daemon closes the connection. 
         // We send and don't expect a readable response (read will return 0).
         if expectClose {
-            _ = sendCommandAsync(commandStr)
+            sendCommandAsync(commandStr)
             disconnect()
             print("📤 Sent SHUTDOWN, closing connection")
             shouldContinueProcessing = false
