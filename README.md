@@ -18,6 +18,11 @@ that embeds `libclamav`. The default scanner is the native in-process backend.
 The older `clamd` socket backend remains in the codebase as a legacy fallback
 for development and diagnostics.
 
+The native scanner uses ClamGUI-managed signature databases from
+`~/Library/Application Support/ClamGUI/Database`. It intentionally does not
+fall back to a host ClamAV installation's database path, so packaged builds stay
+self-contained and predictable.
+
 ## Requirements
 
 - macOS 13.0 or later

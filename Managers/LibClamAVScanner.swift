@@ -42,7 +42,6 @@ actor LibClamAVScanner: MalwareScanner {
             UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
         ) -> Int32
         let clStrError: @convention(c) (Int32) -> UnsafePointer<CChar>?
-        let clRetDbDir: @convention(c) () -> UnsafePointer<CChar>?
     }
 
     private var api: API?
@@ -66,7 +65,7 @@ actor LibClamAVScanner: MalwareScanner {
         }
 
         do {
-            let dbPath = try resolveDatabasePath(api: api)
+            let dbPath = try resolveDatabasePath()
             try configureEngine(newEngine, api: api)
 
             var loadedSignatures: UInt32 = 0
@@ -195,8 +194,7 @@ actor LibClamAVScanner: MalwareScanner {
             clScanLayerGetRecursionLevel: try symbol("cl_scan_layer_get_recursion_level", in: handle),
             clScanLayerGetObjectID: try symbol("cl_scan_layer_get_object_id", in: handle),
             clScanFileEx: try symbol("cl_scanfile_ex", in: handle),
-            clStrError: try symbol("cl_strerror", in: handle),
-            clRetDbDir: try symbol("cl_retdbdir", in: handle)
+            clStrError: try symbol("cl_strerror", in: handle)
         )
     }
 
@@ -253,20 +251,13 @@ actor LibClamAVScanner: MalwareScanner {
         ]
     }
 
-    private func resolveDatabasePath(api: API) throws -> String {
+    private func resolveDatabasePath() throws -> String {
         let appDatabasePath = Self.appDatabaseDirectory.path
         if Self.directoryContainsDatabase(appDatabasePath) {
             return appDatabasePath
         }
 
-        if let defaultPathPointer = api.clRetDbDir() {
-            let defaultPath = String(cString: defaultPathPointer)
-            if Self.directoryContainsDatabase(defaultPath) {
-                return defaultPath
-            }
-        }
-
-        throw MalwareScannerError.signatureLoadFailed("No ClamAV signature database found. Expected databases in \(appDatabasePath).")
+        throw MalwareScannerError.signatureLoadFailed("No ClamGUI signature database found. Expected bundled or app-managed databases in \(appDatabasePath).")
     }
 
     private func configureEngine(_ engine: OpaquePointer, api: API) throws {

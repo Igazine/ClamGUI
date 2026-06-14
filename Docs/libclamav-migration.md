@@ -100,6 +100,7 @@ Current implementation:
 - Development builds discover `freshclam` in the app bundle first, then common
   Homebrew paths. Production packaging still needs to bundle the helper.
 - `LibClamAVScanner` loads signatures from the app-owned database directory.
+  It must not fall back to `cl_retdbdir()` or any host ClamAV database path.
 - Settings surfaces the database status and update action, while daemon controls
   remain hidden when the native scanner is active.
 
@@ -163,7 +164,8 @@ history mostly unchanged while replacing the transport underneath.
 1. Add the C module map and a minimal Swift wrapper against the locally installed
    Homebrew `libclamav` for development only.
 2. Add a `MalwareScanner` protocol and route manual scan through it.
-3. Load an app-owned signature database directory instead of `cl_retdbdir()`.
+3. Load only the app-owned signature database directory instead of
+   `cl_retdbdir()` or any global host database.
 4. Convert Watchdog queue execution to use `MalwareScanner`.
 5. Add signature update management.
 6. Add build scripts for vendored universal `libclamav`, `freshclam`, and
