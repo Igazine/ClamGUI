@@ -19,6 +19,8 @@ class ClamAVManager: ObservableObject {
     @Published var isClamdRunning = false
     @Published var isScannerReady = false
     @Published var isScanning = false
+    @Published var currentScanProgress: ScanProgressUpdate?
+    @Published var currentScanProgressMessage: String = ""
     @Published var lastScanResult: ScanResult?
     @Published var virusDefinitionsVersion: String = "Unknown"
     @Published var virusDefinitionsOutdated = false
@@ -164,11 +166,21 @@ class ClamAVManager: ObservableObject {
     /// For manual scans - waits for result and returns it
     func scanFile(at path: String) async -> ScanResult {
         isScanning = true
+        currentScanProgress = ScanProgressUpdate(inspectedObjects: 0, recursionLevel: 0, fileType: nil)
+        currentScanProgressMessage = currentScanProgress?.displayMessage ?? "Preparing scan..."
         defer {
             isScanning = false
+            currentScanProgress = nil
+            currentScanProgressMessage = ""
         }
 
-        let result = await ScanEngineManager.shared.scanFile(at: path)
+        let result = await ScanEngineManager.shared.scanFile(at: path) { [weak self] update in
+            Task { @MainActor in
+                guard let self, self.isScanning else { return }
+                self.currentScanProgress = update
+                self.currentScanProgressMessage = update.displayMessage
+            }
+        }
 
         lastScanResult = result
 

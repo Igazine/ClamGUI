@@ -19,6 +19,14 @@ actor LibClamAVScanner: MalwareScanner {
         let clEngineCompile: @convention(c) (OpaquePointer?) -> Int32
         let clEngineFree: @convention(c) (OpaquePointer?) -> Int32
         let clEngineSetNum: @convention(c) (OpaquePointer?, Int32, Int64) -> Int32
+        let clEngineSetScanCallback: @convention(c) (
+            OpaquePointer?,
+            (@convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32)?,
+            Int32
+        ) -> Void
+        let clScanLayerGetType: @convention(c) (OpaquePointer?, UnsafeMutablePointer<UnsafePointer<CChar>?>?) -> Int32
+        let clScanLayerGetRecursionLevel: @convention(c) (OpaquePointer?, UnsafeMutablePointer<UInt32>?) -> Int32
+        let clScanLayerGetObjectID: @convention(c) (OpaquePointer?, UnsafeMutablePointer<UInt64>?) -> Int32
         let clScanFileEx: @convention(c) (
             UnsafePointer<CChar>,
             UnsafeMutablePointer<Int32>?,
@@ -87,7 +95,7 @@ actor LibClamAVScanner: MalwareScanner {
         }
     }
 
-    func scanFile(at path: String) async -> ClamAVManager.ScanResult {
+    func scanFile(at path: String, progressHandler: (@Sendable (ScanProgressUpdate) -> Void)?) async -> ClamAVManager.ScanResult {
         guard let api, let engine else {
             return ClamAVManager.ScanResult(filePath: path, status: .error, threatName: "Native scanner is not prepared", timestamp: Date())
         }
@@ -96,6 +104,15 @@ actor LibClamAVScanner: MalwareScanner {
         var verdict: Int32 = LibClamAVConstants.verdictNothingFound
         var scanned: UInt64 = 0
         var options = LibClamAVScanOptions.default
+        let progressContext = progressHandler.map {
+            LibClamAVScanProgressContext(
+                getType: api.clScanLayerGetType,
+                getRecursionLevel: api.clScanLayerGetRecursionLevel,
+                getObjectID: api.clScanLayerGetObjectID,
+                progressHandler: $0
+            )
+        }
+        let contextPointer = progressContext.map { Unmanaged.passUnretained($0).toOpaque() }
 
         let result = path.withCString { pathPointer in
             withUnsafeMutablePointer(to: &options) { optionsPointer in
@@ -106,7 +123,7 @@ actor LibClamAVScanner: MalwareScanner {
                     &scanned,
                     engine,
                     UnsafeMutableRawPointer(optionsPointer),
-                    nil,
+                    contextPointer,
                     nil,
                     nil,
                     nil,
@@ -173,6 +190,10 @@ actor LibClamAVScanner: MalwareScanner {
             clEngineCompile: try symbol("cl_engine_compile", in: handle),
             clEngineFree: try symbol("cl_engine_free", in: handle),
             clEngineSetNum: try symbol("cl_engine_set_num", in: handle),
+            clEngineSetScanCallback: try symbol("cl_engine_set_scan_callback", in: handle),
+            clScanLayerGetType: try symbol("cl_scan_layer_get_type", in: handle),
+            clScanLayerGetRecursionLevel: try symbol("cl_scan_layer_get_recursion_level", in: handle),
+            clScanLayerGetObjectID: try symbol("cl_scan_layer_get_object_id", in: handle),
             clScanFileEx: try symbol("cl_scanfile_ex", in: handle),
             clStrError: try symbol("cl_strerror", in: handle),
             clRetDbDir: try symbol("cl_retdbdir", in: handle)
@@ -260,6 +281,8 @@ actor LibClamAVScanner: MalwareScanner {
                 throw MalwareScannerError.initializationFailed("Could not configure libclamav engine: \(errorMessage(result, api: api))")
             }
         }
+
+        api.clEngineSetScanCallback(engine, libClamAVScanProgressCallback, LibClamAVConstants.scanCallbackPreScan)
     }
 
     private static var appDatabaseDirectory: URL {
@@ -298,6 +321,7 @@ private enum LibClamAVConstants {
     static let dbStandardOptions: UInt32 = 0x2 | 0x8 | 0x2000
     static let engineBytecodeTimeout: Int32 = 16
     static let engineMaxScanTime: Int32 = 31
+    static let scanCallbackPreScan: Int32 = 1
     static let verdictNothingFound: Int32 = 0
     static let verdictTrusted: Int32 = 1
     static let verdictStrongIndicator: Int32 = 2
@@ -320,4 +344,67 @@ private struct LibClamAVScanOptions {
             dev: 0
         )
     }
+}
+
+private final class LibClamAVScanProgressContext: @unchecked Sendable {
+    let getType: @convention(c) (OpaquePointer?, UnsafeMutablePointer<UnsafePointer<CChar>?>?) -> Int32
+    let getRecursionLevel: @convention(c) (OpaquePointer?, UnsafeMutablePointer<UInt32>?) -> Int32
+    let getObjectID: @convention(c) (OpaquePointer?, UnsafeMutablePointer<UInt64>?) -> Int32
+    let progressHandler: @Sendable (ScanProgressUpdate) -> Void
+
+    private let lock = NSLock()
+    private var lastPublishedObjectID: UInt64?
+
+    init(
+        getType: @escaping @convention(c) (OpaquePointer?, UnsafeMutablePointer<UnsafePointer<CChar>?>?) -> Int32,
+        getRecursionLevel: @escaping @convention(c) (OpaquePointer?, UnsafeMutablePointer<UInt32>?) -> Int32,
+        getObjectID: @escaping @convention(c) (OpaquePointer?, UnsafeMutablePointer<UInt64>?) -> Int32,
+        progressHandler: @escaping @Sendable (ScanProgressUpdate) -> Void
+    ) {
+        self.getType = getType
+        self.getRecursionLevel = getRecursionLevel
+        self.getObjectID = getObjectID
+        self.progressHandler = progressHandler
+    }
+
+    func publish(layer: OpaquePointer?) {
+        var objectID: UInt64 = 0
+        _ = getObjectID(layer, &objectID)
+
+        lock.lock()
+        if lastPublishedObjectID == objectID {
+            lock.unlock()
+            return
+        }
+        lastPublishedObjectID = objectID
+        lock.unlock()
+
+        var recursionLevel: UInt32 = 0
+        _ = getRecursionLevel(layer, &recursionLevel)
+
+        var typePointer: UnsafePointer<CChar>?
+        _ = getType(layer, &typePointer)
+        let fileType = typePointer.map { String(cString: $0) }
+
+        progressHandler(
+            ScanProgressUpdate(
+                inspectedObjects: objectID + 1,
+                recursionLevel: recursionLevel,
+                fileType: fileType
+            )
+        )
+    }
+}
+
+private let libClamAVScanProgressCallback: @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32 = { layer, context in
+    guard let context else {
+        return LibClamAVConstants.success
+    }
+
+    Unmanaged<LibClamAVScanProgressContext>
+        .fromOpaque(context)
+        .takeUnretainedValue()
+        .publish(layer: layer)
+
+    return LibClamAVConstants.success
 }

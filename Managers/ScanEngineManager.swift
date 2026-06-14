@@ -62,12 +62,12 @@ actor ScanEngineManager {
         activeScanner = clamdScanner
     }
 
-    func scanFile(at path: String) async -> ClamAVManager.ScanResult {
+    func scanFile(at path: String, progressHandler: (@Sendable (ScanProgressUpdate) -> Void)? = nil) async -> ClamAVManager.ScanResult {
         guard let activeScanner else {
             return ClamAVManager.ScanResult(filePath: path, status: .error, threatName: "No scanner backend is ready", timestamp: Date())
         }
 
-        return await activeScanner.scanFile(at: path)
+        return await activeScanner.scanFile(at: path, progressHandler: progressHandler)
     }
 
     func reloadSignatures() async throws {

@@ -14,8 +14,9 @@ struct ClamdScanner: MalwareScanner {
         QueueManager.shared.start()
     }
 
-    func scanFile(at path: String) async -> ClamAVManager.ScanResult {
-        await QueueManager.shared.scanFile(at: path)
+    func scanFile(at path: String, progressHandler: (@Sendable (ScanProgressUpdate) -> Void)?) async -> ClamAVManager.ScanResult {
+        progressHandler?(ScanProgressUpdate(inspectedObjects: 0, recursionLevel: 0, fileType: "clamd"))
+        return await QueueManager.shared.scanFile(at: path)
     }
 
     func reloadSignatures() async throws {

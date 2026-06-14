@@ -84,6 +84,14 @@ struct ScanView: View {
 
                         Text("Scanning...")
                             .foregroundColor(.secondary)
+
+                        if !clamAVManager.currentScanProgressMessage.isEmpty {
+                            Text(clamAVManager.currentScanProgressMessage)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                        }
                     } else {
                         Button(action: {
                             Task {
