@@ -11,34 +11,34 @@ A graphical user interface for ClamAV antivirus on macOS.
 - **Settings**: Configure watch directories, notifications, and scan preferences
 - **Auto-Updates**: Built-in updater for ClamGUI itself
 
+## Runtime Model
+
+ClamGUI is being migrated from a `clamd` socket frontend to a native macOS app
+that embeds `libclamav`. The default scanner is the native in-process backend.
+The older `clamd` socket backend remains in the codebase as a legacy fallback
+for development and diagnostics.
+
 ## Requirements
 
 - macOS 13.0 or later
-- ClamAV installed and running (clamd daemon)
+- For current development builds: Homebrew ClamAV, used to provide `libclamav`,
+  `freshclam`, and local signature updates until the release bundle embeds them
 
 ## Installation
 
-### 1. Install ClamAV
+### 1. Development Dependency
 
-ClamGUI requires ClamAV to be installed on your system. Install it via Homebrew:
+Install ClamAV via Homebrew for local development:
 
 ```bash
 brew install clamav
 ```
 
-Configure ClamAV and start the daemon:
-
-```bash
-# Edit configuration if needed
-sudo nano /opt/homebrew/etc/clamav/clamd.conf
-
-# Start the ClamAV daemon
-brew services start clamav
-```
+You do not need to start the `clamd` daemon for the native scanner path.
 
 ### 2. Install ClamGUI
 
-Download the latest release from the [Releases](https://github.com/clamgui/clamgui/releases) page.
+Download the latest release from the [Releases](https://github.com/Igazine/ClamGUI/releases) page.
 
 ## Usage
 
@@ -77,8 +77,8 @@ Open the "Settings" tab to:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/clamgui/clamgui.git
-   cd clamgui
+   git clone https://github.com/Igazine/ClamGUI.git
+   cd ClamGUI
    ```
 
 2. Open the project in Xcode:
@@ -87,6 +87,19 @@ Open the "Settings" tab to:
    ```
 
 3. Build and run (⌘R)
+
+### Package the ClamAV Runtime
+
+After building, copy the Homebrew ClamAV runtime into the app bundle:
+
+```bash
+Scripts/package-clamav-runtime.sh /path/to/ClamGUI.app /opt/homebrew
+```
+
+The script copies `libclamav`, `freshclam`, and non-system Homebrew dylib
+dependencies into the bundle and rewrites install names to use the app's
+`Contents/Frameworks` directory. It also ad-hoc signs the modified runtime
+files for local development builds.
 
 ## Project Structure
 
@@ -100,7 +113,11 @@ ClamGUI/
 │   ├── SettingsView.swift     # Settings configuration UI
 │   └── AboutView.swift        # About screen
 ├── Managers/
-│   ├── ClamAVManager.swift    # ClamAV daemon communication
+│   ├── ClamAVManager.swift    # UI-facing scanner facade
+│   ├── LibClamAVScanner.swift # Native libclamav scanner backend
+│   ├── ClamdScanner.swift     # Legacy clamd socket backend
+│   ├── ScanEngineManager.swift # Scanner backend selection
+│   ├── SignatureDatabaseManager.swift # App-owned signature database updates
 │   ├── SettingsManager.swift  # User preferences
 │   ├── MenuBarManager.swift   # Menu bar icon and menu
 │   ├── NotificationManager.swift # User notifications
@@ -111,13 +128,15 @@ ClamGUI/
 
 ## ClamAV Socket Communication
 
-ClamGUI connects to the ClamAV daemon (clamd) via Unix domain socket. Common socket locations:
+The legacy backend connects to the ClamAV daemon (`clamd`) via Unix domain
+socket. Common socket locations:
 
 - `/var/run/clamav/clamd.sock`
 - `/usr/local/var/run/clamav/clamd.sock`
 - `/opt/homebrew/var/run/clamav/clamd.sock`
 
-The app automatically detects the socket location.
+The app still contains this path, but the normal scanner route is native
+`libclamav`.
 
 ## License
 
@@ -133,5 +152,5 @@ GPL-2.0-only - see LICENSE file for details
 
 ## Support
 
-- [GitHub Issues](https://github.com/clamgui/clamgui/issues)
+- [GitHub Issues](https://github.com/Igazine/ClamGUI/issues)
 - [ClamAV Documentation](https://docs.clamav.net/)

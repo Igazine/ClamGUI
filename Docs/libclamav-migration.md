@@ -115,6 +115,19 @@ automation needs to produce a universal macOS bundle with embedded dylibs or a
 static library where license-compatible and technically practical. The app must
 also make the complete corresponding source available for GPL compliance.
 
+Current development packaging:
+
+```bash
+Scripts/package-clamav-runtime.sh /path/to/ClamGUI.app /opt/homebrew
+```
+
+The script copies `libclamav`, `freshclam`, and non-system Homebrew dylib
+dependencies into the app bundle, then rewrites Homebrew install names to
+bundle-relative `@loader_path` references and ad-hoc signs the modified Mach-O
+files. This is enough to validate the app-bundled runtime shape on one
+architecture, but release automation still needs a reproducible universal build
+of ClamAV and its dependencies.
+
 ## Proposed Code Architecture
 
 Introduce a scanner boundary before importing `libclamav`:
