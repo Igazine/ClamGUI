@@ -1,0 +1,32 @@
+# FreshClam Configuration Template for ClamGUI
+# Copy this file to your ClamAV config directory and adjust as needed
+#
+# macOS Homebrew default location: /opt/homebrew/etc/clamav/freshclam.conf
+
+# Uncomment or modify these settings as needed
+
+# Database directory
+# Database /opt/homebrew/share/clamav
+
+# Log file
+# LogFile /var/log/clamav/freshclam.log
+# LogVerbose false
+
+# Update frequency
+# Checks 12
+
+# Database mirrors (add your preferred mirrors)
+# DatabaseMirror database.clamav.net
+# DatabaseMirror db.local.clamav.net
+
+# Script updates
+# ScriptedUpdates yes
+
+# Notify ClamAV daemon after update
+# OnUpdateExecute /usr/local/bin/clamd-signals
+
+# ClamGUI notes:
+# - ClamGUI can trigger freshclam updates via the Settings tab
+# - Ensure freshclam has permission to write to the database directory
+# - Run freshclam manually: freshclam
+# - Or via Homebrew: brew services restart clamav-freshclam

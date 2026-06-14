@@ -1,0 +1,145 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main, develop]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+
+env:
+  PROJECT_TYPE: APP
+
+jobs:
+  build:
+    name: Build ClamGUI
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.0.app/Contents/Developer
+
+      - name: Show Xcode Version
+        run: xcodebuild -version
+
+      - name: Show SDKs
+        run: xcodebuild -showsdks
+
+      - name: Build Debug
+        run: |
+          xcodebuild -project ClamGUI.xcodeproj \
+            -scheme ClamGUI \
+            -configuration Debug \
+            -derivedDataPath build/DerivedData \
+            -destination 'platform=macOS' \
+            build
+
+      - name: Build Release
+        run: |
+          xcodebuild -project ClamGUI.xcodeproj \
+            -scheme ClamGUI \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            -destination 'platform=macOS' \
+            build
+
+      - name: Archive App
+        run: |
+          mkdir -p build/Artifacts
+          cp -R build/DerivedData/Build/Products/Release/ClamGUI.app build/Artifacts/
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClamGUI
+          path: build/Artifacts/ClamGUI.app
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: macos-14
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.0.app/Contents/Developer
+
+      - name: Build Release
+        run: |
+          xcodebuild -project ClamGUI.xcodeproj \
+            -scheme ClamGUI \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            -destination 'platform=macOS' \
+            build
+
+      - name: Create DMG
+        run: |
+          mkdir -p build/dmg
+          cp -R build/DerivedData/Build/Products/Release/ClamGUI.app build/dmg/
+          hdiutil create -volname "ClamGUI" -srcfolder build/dmg -ov -format UDZO ClamGUI.dmg
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ClamGUI.dmg
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notarize:
+    name: Notarize App
+    needs: build
+    runs-on: macos-14
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.0.app/Contents/Developer
+
+      - name: Build Release
+        run: |
+          xcodebuild -project ClamGUI.xcodeproj \
+            -scheme ClamGUI \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            -destination 'platform=macOS' \
+            build
+
+      - name: Create DMG
+        run: |
+          mkdir -p build/dmg
+          cp -R build/DerivedData/Build/Products/Release/ClamGUI.app build/dmg/
+          hdiutil create -volname "ClamGUI" -srcfolder build/dmg -ov -format UDZO ClamGUI.dmg
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit ClamGUI.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+      - name: Staple Notarization
+        run: |
+          xcrun stapler staple ClamGUI.dmg
+
+      - name: Upload Notarized DMG
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ClamGUI.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

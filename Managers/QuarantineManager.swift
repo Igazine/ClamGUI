@@ -1,0 +1,279 @@
+//
+//  QuarantineManager.swift
+//  ClamGUI
+//
+//  Manages quarantine of infected files
+//
+
+import Foundation
+import AppKit
+
+/// Check if a URL is on a local volume (not network)
+private func isLocalVolume(_ url: URL) -> Bool {
+    do {
+        let values = try url.resourceValues(forKeys: [.volumeIsLocalKey])
+        return values.volumeIsLocal ?? true
+    } catch {
+        return true
+    }
+}
+
+/// Check if two URLs are on the same volume
+private func isSameVolume(_ url1: URL, _ url2: URL) -> Bool {
+    // Ensure both paths exist
+    if !FileManager.default.fileExists(atPath: url1.path) {
+        print("⚠️ isSameVolume: url1 doesn't exist: \(url1.path)")
+        return false
+    }
+    if !FileManager.default.fileExists(atPath: url2.path) {
+        try? FileManager.default.createDirectory(at: url2, withIntermediateDirectories: true)
+    }
+    
+    do {
+        let attr1 = try FileManager.default.attributesOfItem(atPath: url1.path)
+        let attr2 = try FileManager.default.attributesOfItem(atPath: url2.path)
+        
+        // Use .systemNumber - unique volume ID (works on APFS too)
+        guard let sysNum1 = attr1[.systemNumber] as? NSNumber,
+              let sysNum2 = attr2[.systemNumber] as? NSNumber else {
+            print("⚠️ isSameVolume: Could not get system number")
+            return true  // Assume same volume if we can't check
+        }
+        
+        let result = sysNum1.int64Value == sysNum2.int64Value
+        print("🔍 isSameVolume: sysNum1=\(sysNum1.int64Value), sysNum2=\(sysNum2.int64Value), same=\(result)")
+        return result
+    } catch {
+        print("⚠️ isSameVolume error: \(error.localizedDescription)")
+        return true  // Assume same volume on error
+    }
+}
+
+/// Format file size for display
+func formatFileSize(_ bytes: UInt64) -> String {
+    let formatter = ByteCountFormatter()
+    formatter.countStyle = .file
+    return formatter.string(fromByteCount: Int64(bytes))
+}
+
+/// Get file size in bytes
+func getFileSize(at url: URL) -> UInt64? {
+    do {
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        return attrs[.size] as? UInt64
+    } catch {
+        return nil
+    }
+}
+
+/// Manages quarantine operations for infected files
+@MainActor
+class QuarantineManager: ObservableObject {
+    static let shared = QuarantineManager()
+    
+    @Published var isQuarantining = false
+    @Published var quarantinedFiles: [QuarantinedFile] = []
+    
+    private let quarantineQueue = DispatchQueue(label: "com.clamgui.quarantine", attributes: .concurrent)
+    
+    private init() {
+        loadQuarantinedFiles()
+    }
+    
+    // MARK: - Public Methods
+
+    /// Quarantine an infected file
+    /// Returns true on success, false on failure
+    func quarantineFile(at path: String, threatName: String, progress: ((Double) -> Void)? = nil) async -> Bool {
+        isQuarantining = true
+        
+        defer {
+            isQuarantining = false
+        }
+
+        let sourceURL = URL(fileURLWithPath: path)
+        let settings = SettingsManager.shared
+        let quarantineDir = settings.quarantinePath
+        let quarantineURL = URL(fileURLWithPath: quarantineDir)
+
+        // Ensure quarantine directory exists
+        try? FileManager.default.createDirectory(atPath: quarantineDir, withIntermediateDirectories: true)
+
+        // Check if file is on network drive
+        guard isLocalVolume(sourceURL) else {
+            print("⚠️ Cannot quarantine file on network drive: \(path)")
+            return false
+        }
+
+        // Check if cross-volume quarantine
+        let isCrossVolume = !isSameVolume(sourceURL, quarantineURL)
+        
+        let fileName = sourceURL.lastPathComponent
+        let timestamp = Date().timeIntervalSince1970
+        let quarantinedFileName = "\(Int(timestamp))_\(fileName)"
+        let destinationURL = quarantineURL.appendingPathComponent(quarantinedFileName)
+
+        do {
+            if isCrossVolume {
+                // Cross-volume: copy with progress, then delete original
+                print("⚠️ Cross-volume quarantine detected: copying with progress...")
+                try await copyFileWithProgress(
+                    from: sourceURL,
+                    to: destinationURL,
+                    progress: progress
+                )
+                // Delete original after successful copy
+                try FileManager.default.removeItem(at: sourceURL)
+            } else {
+                // Same volume: instant metadata-only move
+                try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
+                progress?(1.0)
+            }
+
+            // Record quarantine operation
+            let quarantinedFile = QuarantinedFile(
+                originalPath: path,
+                quarantinePath: destinationURL.path,
+                threatName: threatName,
+                quarantineDate: Date(),
+                fileSize: try destinationURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            )
+
+            await saveQuarantinedFile(quarantinedFile)
+
+            print("File quarantined: \(path) -> \(destinationURL.path)")
+            return true
+
+        } catch {
+            print("Failed to quarantine file: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    /// Check if file can be quarantined (not on network drive)
+    func canQuarantineFile(at path: String) -> Bool {
+        let sourceURL = URL(fileURLWithPath: path)
+        return isLocalVolume(sourceURL)
+    }
+    
+    /// Check if quarantine will be cross-volume
+    func isCrossVolumeQuarantine(at path: String) -> Bool {
+        let sourceURL = URL(fileURLWithPath: path)
+        let quarantineURL = URL(fileURLWithPath: SettingsManager.shared.quarantinePath)
+        return !isSameVolume(sourceURL, quarantineURL)
+    }
+    
+    /// Restore a quarantined file to original location
+    func restoreFile(_ quarantinedFile: QuarantinedFile) async -> Bool {
+        let destinationURL = URL(fileURLWithPath: quarantinedFile.originalPath)
+        let sourceURL = URL(fileURLWithPath: quarantinedFile.quarantinePath)
+        
+        // Ensure destination directory exists
+        let destinationDir = destinationURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
+        
+        do {
+            try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
+            await removeQuarantinedFile(quarantinedFile)
+            print("File restored: \(quarantinedFile.quarantinePath) -> \(quarantinedFile.originalPath)")
+            return true
+        } catch {
+            print("Failed to restore file: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    /// Delete a quarantined file permanently
+    func deleteFile(_ quarantinedFile: QuarantinedFile) async {
+        let sourceURL = URL(fileURLWithPath: quarantinedFile.quarantinePath)
+        
+        do {
+            try FileManager.default.removeItem(at: sourceURL)
+            await removeQuarantinedFile(quarantinedFile)
+            print("File deleted from quarantine: \(quarantinedFile.quarantinePath)")
+        } catch {
+            print("Failed to delete quarantined file: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Delete all quarantined files
+    func deleteAllFiles() async {
+        for file in quarantinedFiles {
+            await deleteFile(file)
+        }
+    }
+    
+    /// Get quarantine directory
+    func getQuarantineDirectory() -> String {
+        return SettingsManager.shared.quarantinePath
+    }
+    
+    /// Open quarantine directory in Finder
+    func openQuarantineDirectory() {
+        let path = getQuarantineDirectory()
+        if let url = URL(string: "file://\(path)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    // MARK: - Private Methods
+    
+    /// Copy file with progress updates
+    private func copyFileWithProgress(
+        from sourceURL: URL,
+        to destURL: URL,
+        progress: ((Double) -> Void)?
+    ) async throws {
+        let fileSize = try FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? UInt64 ?? 0
+        
+        let sourceHandle = try FileHandle(forReadingFrom: sourceURL)
+        defer { try? sourceHandle.close() }
+        
+        FileManager.default.createFile(atPath: destURL.path, contents: nil)
+        let destHandle = try FileHandle(forWritingTo: destURL)
+        defer { try? destHandle.close() }
+        
+        let chunkSize: UInt64 = 10 * 1024 * 1024 // 10MB chunks
+        var bytesCopied: UInt64 = 0
+        
+        while true {
+            let data = sourceHandle.readData(ofLength: Int(chunkSize))
+            if data.isEmpty { break }
+            
+            try destHandle.write(contentsOf: data)
+            bytesCopied += UInt64(data.count)
+            
+            let percent = Double(bytesCopied) / Double(fileSize)
+            progress?(percent)
+        }
+    }
+    
+    // MARK: - Private Methods
+    
+    private func loadQuarantinedFiles() {
+        // In a full implementation, this would load from a database
+        // For now, we'll just use the in-memory array
+    }
+    
+    private func saveQuarantinedFile(_ file: QuarantinedFile) async {
+        quarantinedFiles.append(file)
+        // In a full implementation, this would save to a database
+    }
+    
+    private func removeQuarantinedFile(_ file: QuarantinedFile) async {
+        quarantinedFiles.removeAll { $0.quarantinePath == file.quarantinePath }
+        // In a full implementation, this would update the database
+    }
+}
+
+// MARK: - Models
+
+/// Represents a quarantined file
+struct QuarantinedFile: Identifiable, Equatable {
+    let id = UUID()
+    let originalPath: String
+    let quarantinePath: String
+    let threatName: String
+    let quarantineDate: Date
+    let fileSize: Int
+}
