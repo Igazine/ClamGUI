@@ -48,9 +48,9 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.black.opacity(0.3))
                 } else if !clamAVManager.isClamAVInstalled {
-                    ClamAVNotInstalledView()
-                } else if !clamAVManager.isClamdRunning {
-                    ClamAVDaemonNotRunningView()
+                    ScannerUnavailableView()
+                } else if !clamAVManager.isScannerReady {
+                    ScannerNotReadyView()
                 } else {
                     EmptyView()
                 }
@@ -71,7 +71,7 @@ struct ContentView: View {
     }
 }
 
-struct ClamAVNotInstalledView: View {
+struct ScannerUnavailableView: View {
     @EnvironmentObject var clamAVManager: ClamAVManager
 
     var body: some View {
@@ -82,15 +82,15 @@ struct ClamAVNotInstalledView: View {
                     .font(.system(size: 60))
                     .foregroundColor(.orange)
 
-                Text("ClamAV Not Installed")
+                Text("Scanner Runtime Unavailable")
                     .font(.title)
                     .fontWeight(.bold)
 
-                Text("ClamGUI requires ClamAV to be installed on your system.")
+                Text("ClamGUI could not load the native scanner runtime.")
                     .multilineTextAlignment(.center)
                     .foregroundColor(.secondary)
 
-                Button("Install ClamAV") {
+                Button("ClamAV Installation Help") {
                     clamAVManager.openClamAVInstallationPage()
                 }
                 .buttonStyle(.borderedProminent)
@@ -107,9 +107,8 @@ struct ClamAVNotInstalledView: View {
     }
 }
 
-struct ClamAVDaemonNotRunningView: View {
+struct ScannerNotReadyView: View {
     @EnvironmentObject var clamAVManager: ClamAVManager
-    @State private var isStarting = false
     @State private var isChecking = false
 
     var body: some View {
@@ -125,46 +124,38 @@ struct ClamAVDaemonNotRunningView: View {
                         .font(.system(size: 60))
                         .foregroundColor(.orange)
 
-                    Text("ClamAV Daemon Not Running")
+                    Text("Scanner Not Ready")
                         .font(.title)
                         .fontWeight(.bold)
 
-                    Text("This app requires the ClamAV daemon (clamd) to be running.\n\nStart the daemon from Settings to begin scanning files.")
+                    Text(clamAVManager.scannerStatusMessage)
                         .multilineTextAlignment(.center)
                         .foregroundColor(.secondary)
 
                     HStack(spacing: 15) {
                         Button(action: {
-                            isStarting = true
+                            isChecking = true
                             Task {
-                                await clamAVManager.startClamd()
-                                isStarting = false
-                                // Auto-check after starting
-                                await autoCheckStatus()
+                                await clamAVManager.checkClamAVInstallation()
+                                await clamAVManager.checkVirusDefinitions()
+                                isChecking = false
                             }
                         }) {
                             HStack {
-                                if isStarting {
+                                if isChecking {
                                     ProgressView()
                                         .scaleEffect(0.8)
                                         .tint(.white)
                                 }
-                                Image(systemName: "play.fill")
-                                Text(isStarting ? "Starting..." : "Start Daemon")
+                                Image(systemName: "arrow.clockwise")
+                                Text(isChecking ? "Checking..." : "Refresh")
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isStarting)
-
-                        Button("Refresh") {
-                            Task {
-                                await clamAVManager.checkClamAVInstallation()
-                            }
-                        }
-                        .buttonStyle(.bordered)
+                        .disabled(isChecking)
                     }
 
-                    Text("Daemon socket: ~/Library/Application Support/ClamGUI/clamd.sock")
+                    Text("Native databases: ~/Library/Application Support/ClamGUI/Database")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .textSelection(.enabled)
@@ -179,17 +170,6 @@ struct ClamAVDaemonNotRunningView: View {
                 Spacer()
             }
             .padding()
-        }
-    }
-
-    private func autoCheckStatus() async {
-        // Wait for daemon to start, then check status repeatedly
-        for _ in 0..<10 {
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second
-            await clamAVManager.checkClamAVInstallation()
-            if clamAVManager.isClamdRunning {
-                return // Dialog will auto-dismiss
-            }
         }
     }
 }
