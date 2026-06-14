@@ -85,6 +85,17 @@ if it is practical to package, or implement database download/update logic in
 Swift. The first native milestone should assume an existing app-owned database
 directory, then add update management after scanning is stable.
 
+Current implementation:
+
+- `SignatureDatabaseManager` owns `~/Library/Application Support/ClamGUI/Database`.
+- It writes an app-local `freshclam.conf` and runs `freshclam` against that
+  database directory.
+- Development builds discover `freshclam` in the app bundle first, then common
+  Homebrew paths. Production packaging still needs to bundle the helper.
+- `LibClamAVScanner` loads signatures from the app-owned database directory.
+- Settings surfaces the database status and update action, while daemon controls
+  remain hidden when the native scanner is active.
+
 Source:
 
 - https://docs.clamav.net/manual/Usage/SignatureManagement.html
@@ -134,5 +145,6 @@ history mostly unchanged while replacing the transport underneath.
 2. Add a `MalwareScanner` protocol and route manual scan through it.
 3. Load an app-owned signature database directory instead of `cl_retdbdir()`.
 4. Convert Watchdog queue execution to use `MalwareScanner`.
-5. Add build scripts for vendored universal `libclamav` and dependency dylibs.
-6. Add signature update management.
+5. Add signature update management.
+6. Add build scripts for vendored universal `libclamav`, `freshclam`, and
+   dependency dylibs.

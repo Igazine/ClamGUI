@@ -34,6 +34,7 @@
 		1A0000000000000000000023 /* ClamdScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000023 /* ClamdScanner.swift */; };
 		1A0000000000000000000024 /* LibClamAVScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000024 /* LibClamAVScanner.swift */; };
 		1A0000000000000000000025 /* ScanEngineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000025 /* ScanEngineManager.swift */; };
+		1A0000000000000000000026 /* SignatureDatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000026 /* SignatureDatabaseManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,6 +68,7 @@
 		2A0000000000000000000023 /* ClamdScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClamdScanner.swift; sourceTree = "<group>"; };
 		2A0000000000000000000024 /* LibClamAVScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibClamAVScanner.swift; sourceTree = "<group>"; };
 		2A0000000000000000000025 /* ScanEngineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanEngineManager.swift; sourceTree = "<group>"; };
+		2A0000000000000000000026 /* SignatureDatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignatureDatabaseManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -136,6 +138,7 @@
 				2A0000000000000000000023 /* ClamdScanner.swift */,
 				2A0000000000000000000024 /* LibClamAVScanner.swift */,
 				2A0000000000000000000025 /* ScanEngineManager.swift */,
+				2A0000000000000000000026 /* SignatureDatabaseManager.swift */,
 			);
 			path = Managers;
 			sourceTree = "<group>";
@@ -251,6 +254,7 @@
 				1A0000000000000000000023 /* ClamdScanner.swift in Sources */,
 				1A0000000000000000000024 /* LibClamAVScanner.swift in Sources */,
 				1A0000000000000000000025 /* ScanEngineManager.swift in Sources */,
+				1A0000000000000000000026 /* SignatureDatabaseManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

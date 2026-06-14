@@ -145,9 +145,26 @@ struct SettingsView: View {
                     clamAVManager.updateVirusDefinitions()
                 }) {
                     HStack {
-                        Image(systemName: "arrow.clockwise")
-                        Text("Update Definitions (freshclam)")
+                        if clamAVManager.isUpdatingVirusDefinitions {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        Text(clamAVManager.isUpdatingVirusDefinitions ? "Updating..." : "Update Definitions")
                     }
+                }
+                .disabled(clamAVManager.isUpdatingVirusDefinitions)
+
+                Text("Databases are stored in ~/Library/Application Support/ClamGUI/Database.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if let message = clamAVManager.virusDefinitionsUpdateMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundColor(message.localizedCaseInsensitiveContains("error") || message.localizedCaseInsensitiveContains("failed") ? .red : .secondary)
+                        .textSelection(.enabled)
                 }
             }
             

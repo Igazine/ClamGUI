@@ -26,6 +26,8 @@ class ClamAVManager: ObservableObject {
     @Published var clamdStartError: String? = nil  // Error message if startup fails
     @Published var activeScannerName: String = "Unavailable"
     @Published var scannerStatusMessage: String = "Scanner not initialized"
+    @Published var isUpdatingVirusDefinitions = false
+    @Published var virusDefinitionsUpdateMessage: String?
 
     /// ClamGUI's custom socket path (exclusive to ClamGUI)
     /// This socket is created by our custom clamd.conf
@@ -235,16 +237,32 @@ class ClamAVManager: ObservableObject {
     // MARK: - Virus Definitions
 
     func checkVirusDefinitions() async {
-        // Virus definitions version check requires direct socket communication
-        // For now, just mark as unknown
-        virusDefinitionsVersion = "Unknown"
-        virusDefinitionsOutdated = false
+        let status = await SignatureDatabaseManager.shared.status()
+        virusDefinitionsVersion = status.versionDescription
+        virusDefinitionsOutdated = status.isOutdated
     }
 
     func updateVirusDefinitions() {
-        // Recommend running freshclam
-        if let url = URL(string: "https://docs.clamav.net/manual/Usage.html#freshclam") {
-            NSWorkspace.shared.open(url)
+        guard !isUpdatingVirusDefinitions else {
+            return
+        }
+
+        isUpdatingVirusDefinitions = true
+        virusDefinitionsUpdateMessage = nil
+
+        Task {
+            do {
+                let result = try await SignatureDatabaseManager.shared.updateDefinitions()
+                try? await ScanEngineManager.shared.reloadSignatures()
+                await checkVirusDefinitions()
+                await checkClamAVInstallation()
+                virusDefinitionsUpdateMessage = result.output.isEmpty ? "Virus definitions updated." : result.output
+            } catch {
+                virusDefinitionsUpdateMessage = error.localizedDescription
+                await checkVirusDefinitions()
+            }
+
+            isUpdatingVirusDefinitions = false
         }
     }
 

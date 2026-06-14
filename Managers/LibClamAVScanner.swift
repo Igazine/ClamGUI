@@ -184,9 +184,7 @@ actor LibClamAVScanner: MalwareScanner {
     }
 
     private static var appDatabaseDirectory: URL {
-        let homeDir = ProcessInfo.processInfo.environment["HOME"] ?? FileManager.default.homeDirectoryForCurrentUser.path
-        return URL(fileURLWithPath: homeDir)
-            .appendingPathComponent("Library/Application Support/ClamGUI/Database")
+        SignatureDatabaseManager.databaseDirectory
     }
 
     private static func directoryContainsDatabase(_ path: String) -> Bool {
