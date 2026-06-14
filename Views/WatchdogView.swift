@@ -20,7 +20,6 @@ struct WatchdogView: View {
     @State private var recordCount: Int = 0
     @State private var showingFoundThreats = false
     @State private var hasShownInitialModal = false  // Track if we've shown modal for initial scan threats
-    @State private var queueStatusTask: Task<Void, Never>?
     
     // Auto-start watching once a scanner backend is ready and a directory is set.
     @State private var shouldAutoStart = false
@@ -129,19 +128,13 @@ struct WatchdogView: View {
 
                 Spacer()
 
-                // Queue status
                 if isWatching {
                     HStack(spacing: 5) {
-                        if queueStatus == .scanning {
+                        if currentScanningFile != nil {
                             ProgressView()
                                 .scaleEffect(0.7)
                             Text("Scanning...")
                                 .foregroundColor(.blue)
-                        } else if queueStatus == .suspended {
-                            Image(systemName: "pause.fill")
-                                .foregroundColor(.orange)
-                            Text("Suspended")
-                                .foregroundColor(.orange)
                         } else {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.green)
@@ -194,10 +187,6 @@ struct WatchdogView: View {
         .onAppear {
             setupDirectoryWatcher()
         }
-        .onDisappear {
-            queueStatusTask?.cancel()
-            queueStatusTask = nil
-        }
         .onChange(of: isWatching) { newValue in
             if newValue {
                 directoryWatcher.startWatching()
@@ -228,14 +217,13 @@ struct WatchdogView: View {
     // MARK: - Computed Properties
 
     @State private var currentScanningFile: String?
-    @State private var queueStatus: ScanQueueStatus = .idle
 
     private var statusText: String {
         if !isWatching {
             return "Watchdog inactive"
         }
-        if queueStatus == .suspended {
-            return "Queue suspended - waiting for action"
+        if currentScanningFile != nil {
+            return "Scanning changed files..."
         }
         return isWatching ? "Watching for new files..." : "Watchdog inactive"
     }
@@ -259,8 +247,6 @@ struct WatchdogView: View {
 
     private func setupDirectoryWatcher() {
         guard !settingsManager.watchDirectory.isEmpty else {
-            queueStatusTask?.cancel()
-            queueStatusTask = nil
             return
         }
 
@@ -292,28 +278,7 @@ struct WatchdogView: View {
             await scanExistingFiles()
         }
 
-        // Update UI with queue status
-        startQueueStatusUpdates()
-    }
-
-    /// Update queue status display and threat counts
-    private func startQueueStatusUpdates() {
-        guard queueStatusTask == nil else { return }
-
-        queueStatusTask = Task {
-            while !Task.isCancelled {
-                await MainActor.run {
-                    currentScanningFile = QueueManager.shared.currentScanningFile
-                    queueStatus = QueueManager.shared.scanStatus
-                }
-                try? await Task.sleep(nanoseconds: 500_000_000)  // Update every 500ms
-                
-                // Periodically refresh threats count
-                if isWatching {
-                    updateThreatsCount()
-                }
-            }
-        }
+        updateThreatsCount()
     }
 
     private func resetWatchdogCounters() {
@@ -322,7 +287,6 @@ struct WatchdogView: View {
         threatsCount = 0
         recordCount = 0
         currentScanningFile = nil
-        queueStatus = .idle
         hasShownInitialModal = false
         shouldAutoStart = false
     }
@@ -378,8 +342,9 @@ struct WatchdogView: View {
                     continue
                 }
 
-                // Scan the file
+                currentScanningFile = fileURL.path
                 let result = await clamAVManager.scanFile(at: fileURL.path)
+                currentScanningFile = nil
                 filesScannedCount += 1
                 
                 let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
@@ -439,7 +404,9 @@ struct WatchdogView: View {
             filesScanned += 1
         }
         
+        currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
+        currentScanningFile = nil
         let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
         await ScanResultsDatabase.shared.recordScan(
             path: url.path,
@@ -469,7 +436,9 @@ struct WatchdogView: View {
         let folderId: Int64 = 1
         print("File modified: \(url.path)")
 
+        currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
+        currentScanningFile = nil
         let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
         await ScanResultsDatabase.shared.recordScan(
             path: url.path,

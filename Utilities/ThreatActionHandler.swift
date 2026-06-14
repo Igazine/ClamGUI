@@ -64,9 +64,8 @@ class ThreatActionHandler: ObservableObject {
             return
         }
 
-        // Suspend queue and show modal
-        print("   → Suspending queue and showing modal")
-        QueueManager.shared.suspendQueue()
+        // Show modal and let the user choose how to handle the threat.
+        print("   → Showing threat action modal")
         currentThreat = ThreatInfo(filePath: filePath, threatName: threatName)
         showingThreatModal = true
         print("   → showingThreatModal=\(showingThreatModal)")
@@ -86,10 +85,9 @@ class ThreatActionHandler: ObservableObject {
         // Execute the action
         await executeAction(action, filePath: threat.filePath, threatName: threat.threatName)
         
-        // Close modal and resume queue
+        // Close modal
         showingThreatModal = false
         currentThreat = nil
-        QueueManager.shared.resumeQueue()
     }
     
     /// Execute a threat action

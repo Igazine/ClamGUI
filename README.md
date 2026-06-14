@@ -13,10 +13,9 @@ A graphical user interface for ClamAV antivirus on macOS.
 
 ## Runtime Model
 
-ClamGUI is being migrated from a `clamd` socket frontend to a native macOS app
-that embeds `libclamav`. The default scanner is the native in-process backend.
-The older `clamd` socket backend remains in the codebase as a legacy fallback
-for development and diagnostics.
+ClamGUI is a native macOS front-end around an embedded `libclamav` runtime. It
+does not talk to a `clamd` daemon and does not require users to install or run
+ClamAV separately.
 
 The native scanner uses ClamGUI-managed signature databases from
 `~/Library/Application Support/ClamGUI/Database`. It intentionally does not
@@ -27,7 +26,7 @@ self-contained and predictable.
 
 - macOS 13.0 or later
 - For current development builds: Homebrew ClamAV, used to provide `libclamav`,
-  `freshclam`, and local signature updates until the release bundle embeds them
+  `freshclam`, and local signature files until the release bundle embeds them
 
 ## Installation
 
@@ -38,8 +37,6 @@ Install ClamAV via Homebrew for local development:
 ```bash
 brew install clamav
 ```
-
-You do not need to start the `clamd` daemon for the native scanner path.
 
 ### 2. Install ClamGUI
 
@@ -139,8 +136,7 @@ ClamGUI/
 ├── Managers/
 │   ├── ClamAVManager.swift    # UI-facing scanner facade
 │   ├── LibClamAVScanner.swift # Native libclamav scanner backend
-│   ├── ClamdScanner.swift     # Legacy clamd socket backend
-│   ├── ScanEngineManager.swift # Scanner backend selection
+│   ├── ScanEngineManager.swift # Native scanner owner
 │   ├── SignatureDatabaseManager.swift # App-owned signature database updates
 │   ├── SettingsManager.swift  # User preferences
 │   ├── MenuBarManager.swift   # Menu bar icon and menu
@@ -149,18 +145,6 @@ ClamGUI/
 └── Utilities/
     └── DirectoryWatcher.swift # File system monitoring
 ```
-
-## ClamAV Socket Communication
-
-The legacy backend connects to the ClamAV daemon (`clamd`) via Unix domain
-socket. Common socket locations:
-
-- `/var/run/clamav/clamd.sock`
-- `/usr/local/var/run/clamav/clamd.sock`
-- `/opt/homebrew/var/run/clamav/clamd.sock`
-
-The app still contains this path, but the normal scanner route is native
-`libclamav`.
 
 ## License
 

@@ -11,55 +11,27 @@ actor ScanEngineManager {
     static let shared = ScanEngineManager()
 
     private let nativeScanner = LibClamAVScanner()
-    private let clamdScanner = ClamdScanner()
     private var activeScanner: MalwareScanner?
-    private var lastNativeError: String?
 
     private init() {}
 
-    func preparePreferredScanner(clamdSocketExists: Bool) async -> ScannerPreparationStatus {
+    func prepareScanner() async -> ScannerPreparationStatus {
         do {
             try await nativeScanner.prepare()
             activeScanner = nativeScanner
-            lastNativeError = nil
             return ScannerPreparationStatus(
                 isReady: true,
                 backend: .nativeLibClamAV,
                 message: "Native libclamav scanner ready"
             )
         } catch {
-            lastNativeError = error.localizedDescription
+            activeScanner = nil
+            return ScannerPreparationStatus(
+                isReady: false,
+                backend: nil,
+                message: error.localizedDescription
+            )
         }
-
-        if clamdSocketExists {
-            do {
-                try await clamdScanner.prepare()
-                activeScanner = clamdScanner
-                return ScannerPreparationStatus(
-                    isReady: true,
-                    backend: .clamd,
-                    message: "Legacy clamd scanner ready"
-                )
-            } catch {
-                return ScannerPreparationStatus(
-                    isReady: false,
-                    backend: nil,
-                    message: error.localizedDescription
-                )
-            }
-        }
-
-        activeScanner = nil
-        return ScannerPreparationStatus(
-            isReady: false,
-            backend: nil,
-            message: lastNativeError ?? "No scanner backend is ready"
-        )
-    }
-
-    func useLegacyClamdScanner() async throws {
-        try await clamdScanner.prepare()
-        activeScanner = clamdScanner
     }
 
     func scanFile(at path: String, progressHandler: (@Sendable (ScanProgressUpdate) -> Void)? = nil) async -> ClamAVManager.ScanResult {

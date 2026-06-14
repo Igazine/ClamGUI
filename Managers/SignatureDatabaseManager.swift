@@ -116,7 +116,6 @@ actor SignatureDatabaseManager {
         ScriptedUpdates yes
         CompressLocalDatabase no
         Bytecode yes
-        NotifyClamd no
         """
 
         try config.write(to: configURL, atomically: true, encoding: .utf8)

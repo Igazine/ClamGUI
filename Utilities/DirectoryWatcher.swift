@@ -159,7 +159,6 @@ class DirectoryWatcher: ObservableObject {
     private func handleFileDeleted(path: String) {
         let url = URL(fileURLWithPath: path)
         let folderId: Int64 = 1
-        QueueManager.shared.removeFile(path)
         Task { @MainActor in
             await ScanResultsDatabase.shared.removeRecord(path: path, folderId: folderId)
             self.onFileDeleted?(url)

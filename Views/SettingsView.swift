@@ -225,15 +225,6 @@ struct SettingsView: View {
                     }
                 }
 
-                if clamAVManager.activeScannerName == ScannerBackend.clamd.rawValue {
-                    HStack {
-                        Text("Compatibility Backend")
-                        Spacer()
-                        Label("Legacy clamd", systemImage: "socket")
-                            .foregroundColor(.secondary)
-                    }
-                }
-
                 if !clamAVManager.isClamAVInstalled {
                     Button(action: {
                         clamAVManager.openClamAVInstallationPage()

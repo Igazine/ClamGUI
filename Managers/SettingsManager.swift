@@ -22,8 +22,6 @@ class SettingsManager: ObservableObject {
     @Published var scanArchives: Bool = true
     @Published var startAtLogin: Bool = false
     @Published var hideMenuBarIcon: Bool = false
-    @Published var launchClamdWithSudo: Bool = false
-    @Published var hasShownSudoWarning: Bool = false
     @Published var quarantineEnabled: Bool = false
     @Published var quarantinePath: String = ""
     
@@ -61,8 +59,6 @@ class SettingsManager: ObservableObject {
             "scanArchives": scanArchives,
             "startAtLogin": startAtLogin,
             "hideMenuBarIcon": hideMenuBarIcon,
-            "launchClamdWithSudo": launchClamdWithSudo,
-            "hasShownSudoWarning": hasShownSudoWarning,
             "quarantineEnabled": quarantineEnabled,
             "quarantinePath": quarantinePath,
             "threatAutoAction": threatAutoAction,
@@ -90,8 +86,6 @@ class SettingsManager: ObservableObject {
             $scanArchives.map { _ in }.eraseToAnyPublisher(),
             $startAtLogin.map { _ in }.eraseToAnyPublisher(),
             $hideMenuBarIcon.map { _ in }.eraseToAnyPublisher(),
-            $launchClamdWithSudo.map { _ in }.eraseToAnyPublisher(),
-            $hasShownSudoWarning.map { _ in }.eraseToAnyPublisher(),
             $quarantineEnabled.map { _ in }.eraseToAnyPublisher(),
             $quarantinePath.map { _ in }.eraseToAnyPublisher(),
             $dbMaxRecords.map { _ in }.eraseToAnyPublisher(),
@@ -129,8 +123,6 @@ class SettingsManager: ObservableObject {
         scanArchives = settings["scanArchives"] as? Bool ?? true
         startAtLogin = settings["startAtLogin"] as? Bool ?? false
         hideMenuBarIcon = settings["hideMenuBarIcon"] as? Bool ?? false
-        launchClamdWithSudo = settings["launchClamdWithSudo"] as? Bool ?? false
-        hasShownSudoWarning = settings["hasShownSudoWarning"] as? Bool ?? false
         quarantineEnabled = settings["quarantineEnabled"] as? Bool ?? false
         quarantinePath = settings["quarantinePath"] as? String ?? ""
         threatAutoAction = settings["threatAutoAction"] as? Bool ?? false
@@ -166,8 +158,6 @@ class SettingsManager: ObservableObject {
         scanArchives = true
         startAtLogin = false
         hideMenuBarIcon = false
-        launchClamdWithSudo = false
-        hasShownSudoWarning = false
         quarantineEnabled = false
         let defaultQuarantinePath = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/ClamGUI/Quarantine")

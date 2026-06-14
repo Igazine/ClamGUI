@@ -22,9 +22,6 @@
 # Script updates
 # ScriptedUpdates yes
 
-# Notify ClamAV daemon after update
-# OnUpdateExecute /usr/local/bin/clamd-signals
-
 # ClamGUI notes:
 # - ClamGUI can trigger freshclam updates via the Settings tab
 # - Ensure freshclam has permission to write to the database directory
