@@ -176,30 +176,56 @@ actor LibClamAVScanner: MalwareScanner {
     }
 
     private func openLibrary() throws -> UnsafeMutableRawPointer {
-        for path in librarySearchPaths() {
-            if let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) {
+        let bundledPaths = bundledLibrarySearchPaths()
+        let existingBundledPaths = bundledPaths.filter { FileManager.default.fileExists(atPath: $0) }
+
+        for path in existingBundledPaths {
+            if let handle = openLibrary(at: path) {
                 return handle
             }
         }
 
-        let message = dlerror().map { String(cString: $0) } ?? "unknown dynamic loader error"
+        if !existingBundledPaths.isEmpty {
+            let message = dlerror().map { String(cString: $0) } ?? "unknown dynamic loader error"
+            throw MalwareScannerError.unavailable("Bundled libclamav could not be loaded: \(message)")
+        }
+
+        for path in developmentLibrarySearchPaths() {
+            if let handle = openLibrary(at: path) {
+                return handle
+            }
+        }
+
+        let message = dlerror().map { String(cString: $0) } ?? "libclamav was not found in the app bundle or development paths"
         throw MalwareScannerError.unavailable("Could not load libclamav: \(message)")
     }
 
-    private func librarySearchPaths() -> [String] {
-        var paths: [String] = []
-
-        if let privateFrameworksPath = Bundle.main.privateFrameworksPath {
-            paths.append(URL(fileURLWithPath: privateFrameworksPath).appendingPathComponent("libclamav.12.dylib").path)
-            paths.append(URL(fileURLWithPath: privateFrameworksPath).appendingPathComponent("libclamav.dylib").path)
+    private func openLibrary(at path: String) -> UnsafeMutableRawPointer? {
+        guard FileManager.default.fileExists(atPath: path) else {
+            return nil
         }
 
-        paths.append("/opt/homebrew/lib/libclamav.12.dylib")
-        paths.append("/opt/homebrew/lib/libclamav.dylib")
-        paths.append("/usr/local/lib/libclamav.12.dylib")
-        paths.append("/usr/local/lib/libclamav.dylib")
+        return dlopen(path, RTLD_NOW | RTLD_LOCAL)
+    }
 
-        return paths
+    private func bundledLibrarySearchPaths() -> [String] {
+        if let privateFrameworksPath = Bundle.main.privateFrameworksPath {
+            return [
+                URL(fileURLWithPath: privateFrameworksPath).appendingPathComponent("libclamav.12.dylib").path,
+                URL(fileURLWithPath: privateFrameworksPath).appendingPathComponent("libclamav.dylib").path
+            ]
+        }
+
+        return []
+    }
+
+    private func developmentLibrarySearchPaths() -> [String] {
+        [
+            "/opt/homebrew/lib/libclamav.12.dylib",
+            "/opt/homebrew/lib/libclamav.dylib",
+            "/usr/local/lib/libclamav.12.dylib",
+            "/usr/local/lib/libclamav.dylib"
+        ]
     }
 
     private func resolveDatabasePath(api: API) throws -> String {

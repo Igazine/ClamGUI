@@ -43,6 +43,9 @@ headers installed, while still calling the native C API in-process. The runtime
 loader searches the app bundle's private frameworks directory first, then common
 Homebrew development paths. Production packaging should bundle `libclamav` and
 its non-system dependencies in the app rather than relying on Homebrew paths.
+If a bundled `libclamav` is present but cannot be loaded, ClamGUI treats that as
+a runtime error instead of falling back to Homebrew, because fallback would hide
+broken release packaging.
 
 ## libclamav Lifecycle
 
