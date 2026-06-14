@@ -114,6 +114,13 @@ To verify an already packaged app bundle:
 Scripts/verify-clamav-runtime.sh /path/to/ClamGUI.app
 ```
 
+To run an end-to-end native scanner smoke test against a clean file and the
+EICAR antivirus test string:
+
+```bash
+Scripts/smoke-test-native-scanner.sh
+```
+
 ## Project Structure
 
 ```

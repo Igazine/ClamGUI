@@ -16,18 +16,22 @@ struct ClamGUIApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(settingsManager)
-                .environmentObject(clamAVManager)
-                .environmentObject(updaterManager)
-                .onAppear {
-                    Task {
-                        print("🔍 Checking ClamAV installation...")
-                        await clamAVManager.checkClamAVInstallation()
-                        print("📊 ClamAV Status: installed=\(clamAVManager.isClamAVInstalled), running=\(clamAVManager.isClamdRunning)")
-                        await clamAVManager.checkVirusDefinitions()
+            if NativeScannerSmokeTest.isEnabled {
+                EmptyView()
+            } else {
+                ContentView()
+                    .environmentObject(settingsManager)
+                    .environmentObject(clamAVManager)
+                    .environmentObject(updaterManager)
+                    .onAppear {
+                        Task {
+                            print("🔍 Checking ClamAV installation...")
+                            await clamAVManager.checkClamAVInstallation()
+                            print("📊 ClamAV Status: installed=\(clamAVManager.isClamAVInstalled), scannerReady=\(clamAVManager.isScannerReady)")
+                            await clamAVManager.checkVirusDefinitions()
+                        }
                     }
-                }
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
@@ -46,6 +50,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarManager: MenuBarManager?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if NativeScannerSmokeTest.isEnabled {
+            NativeScannerSmokeTest.runAndExit()
+            return
+        }
+
         // Initialize menu bar icon
         menuBarManager = MenuBarManager.shared
 
