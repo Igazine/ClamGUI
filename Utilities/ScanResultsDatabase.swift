@@ -46,6 +46,7 @@ class ScanResultsDatabase: @unchecked Sendable {
     private var db: OpaquePointer?
     private let dbPath: String
     private let dbQueue = DispatchQueue(label: "com.clamgui.db")
+    private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     
     private init() {
         let homeDir = ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
@@ -208,7 +209,7 @@ class ScanResultsDatabase: @unchecked Sendable {
         
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_int64(statement, 1, folderId)
-        sqlite3_bind_text(statement, 2, (path as NSString).utf8String, -1, nil)
+        bindText(statement, index: 2, value: path)
         
         sqlite3_step(statement)
     }
@@ -254,16 +255,16 @@ class ScanResultsDatabase: @unchecked Sendable {
         
         defer { sqlite3_finalize(statement) }
         
-        sqlite3_bind_text(statement, 1, (path as NSString).utf8String, -1, nil)
+        bindText(statement, index: 1, value: path)
         sqlite3_bind_int64(statement, 2, folderId)
         switch status {
-        case .clean: sqlite3_bind_text(statement, 3, "clean", -1, nil)
-        case .infected: sqlite3_bind_text(statement, 3, "infected", -1, nil)
-        case .error: sqlite3_bind_text(statement, 3, "error", -1, nil)
+        case .clean: bindText(statement, index: 3, value: "clean")
+        case .infected: bindText(statement, index: 3, value: "infected")
+        case .error: bindText(statement, index: 3, value: "error")
         }
         
         if let threatName = threatName {
-            sqlite3_bind_text(statement, 4, (threatName as NSString).utf8String, -1, nil)
+            bindText(statement, index: 4, value: threatName)
         } else {
             sqlite3_bind_null(statement, 4)
         }
@@ -296,7 +297,7 @@ class ScanResultsDatabase: @unchecked Sendable {
         defer { sqlite3_finalize(statement) }
         
         sqlite3_bind_int64(statement, 1, folderId)
-        sqlite3_bind_text(statement, 2, (path as NSString).utf8String, -1, nil)
+        bindText(statement, index: 2, value: path)
         
         if sqlite3_step(statement) == SQLITE_ROW {
             return ScanResultRecord(
@@ -312,5 +313,9 @@ class ScanResultsDatabase: @unchecked Sendable {
         }
         
         return nil
+    }
+
+    private func bindText(_ statement: OpaquePointer?, index: Int32, value: String) {
+        sqlite3_bind_text(statement, index, value, -1, sqliteTransient)
     }
 }
