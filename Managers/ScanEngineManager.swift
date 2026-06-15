@@ -21,6 +21,7 @@ actor ScanEngineManager {
             activeScanner = nativeScanner
             return ScannerPreparationStatus(
                 isReady: true,
+                isRuntimeAvailable: true,
                 backend: .nativeLibClamAV,
                 message: "Native libclamav scanner ready"
             )
@@ -28,6 +29,7 @@ actor ScanEngineManager {
             activeScanner = nil
             return ScannerPreparationStatus(
                 isReady: false,
+                isRuntimeAvailable: Self.isRuntimeAvailable(after: error),
                 backend: nil,
                 message: error.localizedDescription
             )
@@ -57,5 +59,18 @@ actor ScanEngineManager {
 
     func activeBackend() async -> ScannerBackend? {
         activeScanner?.backend
+    }
+
+    private static func isRuntimeAvailable(after error: Error) -> Bool {
+        guard let scannerError = error as? MalwareScannerError else {
+            return false
+        }
+
+        switch scannerError {
+        case .unavailable:
+            return false
+        case .initializationFailed, .signatureLoadFailed, .engineCompileFailed:
+            return true
+        }
     }
 }

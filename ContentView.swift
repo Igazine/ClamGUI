@@ -47,7 +47,7 @@ struct ContentView: View {
                     ProgressView("Checking ClamAV status...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.black.opacity(0.3))
-                } else if !clamAVManager.isClamAVInstalled {
+                } else if !clamAVManager.isScannerRuntimeAvailable {
                     ScannerUnavailableView()
                 } else if !clamAVManager.isScannerReady {
                     ScannerNotReadyView()
@@ -86,14 +86,14 @@ struct ScannerUnavailableView: View {
                     .font(.title)
                     .fontWeight(.bold)
 
-                Text("ClamGUI could not load the native scanner runtime.")
+                Text(clamAVManager.scannerStatusMessage)
                     .multilineTextAlignment(.center)
                     .foregroundColor(.secondary)
 
-                Button("ClamAV Installation Help") {
-                    clamAVManager.openClamAVInstallationPage()
-                }
-                .buttonStyle(.borderedProminent)
+                Text("For development builds, run the packaged debug build script so libclamav is embedded in the app bundle.")
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.secondary)
             }
             .padding(40)
             .background(

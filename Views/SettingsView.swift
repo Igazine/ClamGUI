@@ -216,7 +216,7 @@ struct SettingsView: View {
                     if clamAVManager.isScannerReady {
                         Label("Ready", systemImage: "checkmark.circle")
                             .foregroundColor(.green)
-                    } else if clamAVManager.isClamAVInstalled {
+                    } else if clamAVManager.isScannerRuntimeAvailable {
                         Label("Available", systemImage: "checkmark.circle")
                             .foregroundColor(.orange)
                     } else {
@@ -225,16 +225,6 @@ struct SettingsView: View {
                     }
                 }
 
-                if !clamAVManager.isClamAVInstalled {
-                    Button(action: {
-                        clamAVManager.openClamAVInstallationPage()
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.down.circle")
-                            Text("Install ClamAV")
-                        }
-                    }
-                }
             }
             
             // Database

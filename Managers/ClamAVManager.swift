@@ -15,7 +15,7 @@ class ClamAVManager: ObservableObject {
 
     // MARK: - Published Properties
 
-    @Published var isClamAVInstalled = false
+    @Published var isScannerRuntimeAvailable = false
     @Published var isScannerReady = false
     @Published var isScanning = false
     @Published var currentScanProgress: ScanProgressUpdate?
@@ -54,24 +54,18 @@ class ClamAVManager: ObservableObject {
         let status = await ScanEngineManager.shared.prepareScanner()
 
         if status.isReady {
-            isClamAVInstalled = true
+            isScannerRuntimeAvailable = true
             isScannerReady = true
             activeScannerName = status.backend?.rawValue ?? "Unknown"
             scannerStatusMessage = status.message
             return
         }
 
-        isClamAVInstalled = false
+        isScannerRuntimeAvailable = status.isRuntimeAvailable
         isScannerReady = false
         activeScannerName = "Unavailable"
         scannerStatusMessage = status.message
         print("Native scanner unavailable: \(status.message)")
-    }
-
-    func openClamAVInstallationPage() {
-        if let url = URL(string: "https://docs.clamav.net/manual/Installing.html") {
-            NSWorkspace.shared.open(url)
-        }
     }
 
     /// Shut down the active scanner runtime without probing or starting fallbacks.
