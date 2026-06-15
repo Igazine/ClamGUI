@@ -13,6 +13,10 @@ import AppKit
 class NotificationManager: NSObject {
     static let shared = NotificationManager()
 
+    private enum UserInfoKey {
+        static let presentIfForeground = "presentIfForeground"
+    }
+
     private let notificationCenter = UNUserNotificationCenter.current()
 
     private override init() {
@@ -61,6 +65,9 @@ class NotificationManager: NSObject {
         content.body = "\(fileName) contains \(threatName)"
         content.sound = .default
         content.categoryIdentifier = "THREAT_ALERT"
+        content.userInfo = [UserInfoKey.presentIfForeground: true]
+
+        requestAttention()
 
         deliver(content)
     }
@@ -85,6 +92,7 @@ class NotificationManager: NSObject {
         }
 
         content.categoryIdentifier = "SCAN_RESULT"
+        content.userInfo = [UserInfoKey.presentIfForeground: true]
 
         deliver(content)
     }
@@ -100,6 +108,7 @@ class NotificationManager: NSObject {
         content.title = "Watchdog Scan"
         content.body = "\(fileName): \(status)"
         content.sound = .none
+        content.userInfo = [UserInfoKey.presentIfForeground: true]
 
         deliver(content)
     }
@@ -215,13 +224,23 @@ class NotificationManager: NSObject {
             }
         }
     }
+
+    private func requestAttention() {
+        DispatchQueue.main.async {
+            NSApplication.shared.requestUserAttention(.criticalRequest)
+        }
+    }
 }
 
 // MARK: - UNUserNotificationCenterDelegate
 
 extension NotificationManager: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([])
+        if notification.request.content.userInfo[NotificationManager.UserInfoKey.presentIfForeground] as? Bool == true {
+            completionHandler([.banner, .sound])
+        } else {
+            completionHandler([])
+        }
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
