@@ -388,18 +388,8 @@ struct WatchdogView: View {
 
         let folderId: Int64 = 1  // Single folder, ID = 1
 
-        // Check if file needs scanning
-        let needsScan = ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId)
-
-        if !needsScan {
-            print("Skipping unchanged file: \(url.path)")
-            await MainActor.run {
-                filesSkipped += 1
-            }
-            return
-        }
-
-        // File needs scanning - update counter
+        // New file events must always scan. A copied file may preserve metadata
+        // that matches an old record, but it still needs a fresh verdict.
         await MainActor.run {
             filesScanned += 1
         }
