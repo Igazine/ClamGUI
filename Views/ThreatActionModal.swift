@@ -142,10 +142,15 @@ struct ThreatActionModal: View {
 /// Found Threats Sheet (for viewing all threats)
 struct FoundThreatsSheet: View {
     @Environment(\.dismiss) var dismiss
+    let onThreatsChanged: (() -> Void)?
+
+    init(onThreatsChanged: (() -> Void)? = nil) {
+        self.onThreatsChanged = onThreatsChanged
+    }
 
     var body: some View {
         VStack {
-            FoundThreatsView()
+            FoundThreatsView(onThreatsChanged: onThreatsChanged)
 
             Divider()
 

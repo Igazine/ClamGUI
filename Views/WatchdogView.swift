@@ -207,7 +207,7 @@ struct WatchdogView: View {
             }
         }
         .sheet(isPresented: $showingFoundThreats) {
-            FoundThreatsSheet()
+            FoundThreatsSheet(onThreatsChanged: updateThreatsCount)
         }
         .sheet(isPresented: $threatHandler.showingThreatModal) {
             ThreatActionModal()

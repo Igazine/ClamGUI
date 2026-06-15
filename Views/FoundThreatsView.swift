@@ -9,8 +9,13 @@ import SwiftUI
 
 struct FoundThreatsView: View {
     @ObservedObject var handler = ThreatActionHandler.shared
+    let onThreatsChanged: (() -> Void)?
     @State private var threats: [ThreatRecord] = []
     @State private var isLoading = true
+
+    init(onThreatsChanged: (() -> Void)? = nil) {
+        self.onThreatsChanged = onThreatsChanged
+    }
 
     var body: some View {
         VStack(spacing: 15) {
@@ -75,6 +80,7 @@ struct FoundThreatsView: View {
             await MainActor.run {
                 threats = records.map { ThreatRecord(from: $0) }
                 isLoading = false
+                onThreatsChanged?()
             }
         }
     }
