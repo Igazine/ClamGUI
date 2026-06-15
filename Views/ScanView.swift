@@ -17,11 +17,7 @@ struct ScanView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                Image("header")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 506)
-                    .accessibilityHidden(true)
+                ScanHeaderImage()
 
                 // Header
                 Text("Scan a Single File")
@@ -240,6 +236,23 @@ struct ScanView: View {
 }
 
 // MARK: - Subviews
+
+struct ScanHeaderImage: View {
+    private let image = Bundle.main
+        .url(forResource: "header", withExtension: "png")
+        .flatMap(NSImage.init(contentsOf:))
+
+    var body: some View {
+        if let image {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 506, maxHeight: 135)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+        }
+    }
+}
 
 struct FileInfoCard: View {
     let url: URL
