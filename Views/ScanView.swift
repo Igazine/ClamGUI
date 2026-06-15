@@ -17,6 +17,12 @@ struct ScanView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
+                Image("header")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 506)
+                    .accessibilityHidden(true)
+
                 // Header
                 Text("Scan a Single File")
                     .font(.title)

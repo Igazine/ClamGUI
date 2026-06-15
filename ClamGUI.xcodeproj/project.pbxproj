@@ -10,6 +10,7 @@
 		1A0000000000000000000001 /* ClamGUIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000001 /* ClamGUIApp.swift */; };
 		1A0000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000002 /* ContentView.swift */; };
 		1A0000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000003 /* Assets.xcassets */; };
+		1A0000000000000000000028 /* header.png in Resources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000028 /* header.png */; };
 		1A0000000000000000000004 /* ClamAVManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000004 /* ClamAVManager.swift */; };
 		1A0000000000000000000005 /* ScanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000005 /* ScanView.swift */; };
 		1A0000000000000000000006 /* WatchdogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000006 /* WatchdogView.swift */; };
@@ -61,6 +62,7 @@
 		2A0000000000000000000025 /* ScanEngineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanEngineManager.swift; sourceTree = "<group>"; };
 		2A0000000000000000000026 /* SignatureDatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignatureDatabaseManager.swift; sourceTree = "<group>"; };
 		2A0000000000000000000027 /* NativeScannerSmokeTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeScannerSmokeTest.swift; sourceTree = "<group>"; };
+		2A0000000000000000000028 /* header.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Assets/header.png; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -91,6 +93,7 @@
 				120000000000000000000005 /* Managers */,
 				120000000000000000000006 /* Utilities */,
 				2A0000000000000000000003 /* Assets.xcassets */,
+				2A0000000000000000000028 /* header.png */,
 				2A000000000000000000000E /* ClamGUI.entitlements */,
 				2A000000000000000000000F /* Info.plist */,
 			);
@@ -206,6 +209,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A0000000000000000000003 /* Assets.xcassets in Resources */,
+				1A0000000000000000000028 /* header.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
