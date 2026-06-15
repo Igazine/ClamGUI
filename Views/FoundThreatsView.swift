@@ -125,7 +125,8 @@ struct ThreatCard: View {
     @State private var quarantineProgress: Double = 0
     @State private var showingCrossVolumeWarning = false
     @State private var showingNetworkWarning = false
-    @State private var showingDeleteConfirm = false
+    @State private var showingRemoveRecordConfirm = false
+    @State private var showingDeleteFileConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -191,15 +192,23 @@ struct ThreatCard: View {
                     Spacer()
                 }
                 
-                // Second row: Clear record button
+                // Second row: record/file management actions
                 HStack(spacing: 8) {
-                    Button(action: clearThreatRecord) {
-                        Label("Clear Record", systemImage: "trash")
+                    Button(action: removeThreatRecord) {
+                        Label("Remove from List", systemImage: "xmark.circle")
                             .font(.caption)
                     }
                     .buttonStyle(.bordered)
                     .tint(.gray.opacity(0.5))
-                    .help("Remove from threats list")
+                    .help("Remove this detection from Found Threats without changing the file")
+
+                    Button(role: .destructive, action: confirmDeleteFile) {
+                        Label("Delete File", systemImage: "trash")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .help("Permanently delete the file from disk")
                     
                     Spacer()
                 }
@@ -227,13 +236,21 @@ struct ThreatCard: View {
                     Text("This file is on a different drive than your quarantine folder.")
                 }
             }
-            .alert("Delete File", isPresented: $showingDeleteConfirm) {
-                Button("Delete", role: .destructive) {
+            .alert("Remove from List", isPresented: $showingRemoveRecordConfirm) {
+                Button("Remove") {
+                    Task { await removeRecordOnly() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes the detection from ClamGUI's Found Threats list. The file will not be changed.")
+            }
+            .alert("Delete File", isPresented: $showingDeleteFileConfirm) {
+                Button("Delete File", role: .destructive) {
                     Task { await deleteFileFromDisk() }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will permanently delete the file and remove it from the threats list.")
+                Text("This permanently deletes the file from disk and removes it from Found Threats.")
             }
         }
         .padding()
@@ -245,8 +262,12 @@ struct ThreatCard: View {
         )
     }
 
-    private func clearThreatRecord() {
-        showingDeleteConfirm = true
+    private func removeThreatRecord() {
+        showingRemoveRecordConfirm = true
+    }
+
+    private func confirmDeleteFile() {
+        showingDeleteFileConfirm = true
     }
 
     private func quarantineFile() {
@@ -284,6 +305,12 @@ struct ThreatCard: View {
     private func openInFinder() {
         let folderPath = threat.folderPath
         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: folderPath)
+    }
+
+    private func removeRecordOnly() async {
+        let folderId: Int64 = 1
+        await ScanResultsDatabase.shared.removeRecord(path: threat.filePath, folderId: folderId)
+        onActionCompleted()
     }
     
     private func deleteFileFromDisk() async {
