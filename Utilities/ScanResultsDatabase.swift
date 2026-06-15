@@ -100,12 +100,13 @@ class ScanResultsDatabase: @unchecked Sendable {
     
     /// Record or update a scan result
     func recordScan(path: String, folderId: Int64, status: ScanStatus, threatName: String? = nil) async {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        guard attrs != nil || status == .infected else {
             return
         }
-        
-        let fileSize = attrs[.size] as? Int64 ?? 0
-        let modDate = Int64((attrs[.modificationDate] as? Date ?? Date()).timeIntervalSince1970)
+
+        let fileSize = attrs?[.size] as? Int64 ?? 0
+        let modDate = Int64((attrs?[.modificationDate] as? Date ?? Date()).timeIntervalSince1970)
         let scanTimestamp = Int64(Date().timeIntervalSince1970)
         
         recordScanSync(path: path, folderId: folderId, status: status,
@@ -210,6 +211,15 @@ class ScanResultsDatabase: @unchecked Sendable {
         sqlite3_bind_text(statement, 2, (path as NSString).utf8String, -1, nil)
         
         sqlite3_step(statement)
+    }
+
+    /// Remove a record only when it is not an infected finding.
+    func removeNonThreatRecord(path: String, folderId: Int64) async {
+        if getRecord(path, folderId: folderId)?.status == .infected {
+            return
+        }
+
+        await removeRecord(path: path, folderId: folderId)
     }
     
     /// Clear all records (for testing)

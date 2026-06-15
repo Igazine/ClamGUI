@@ -160,7 +160,7 @@ class DirectoryWatcher: ObservableObject {
         let url = URL(fileURLWithPath: path)
         let folderId: Int64 = 1
         Task { @MainActor in
-            await ScanResultsDatabase.shared.removeRecord(path: path, folderId: folderId)
+            await ScanResultsDatabase.shared.removeNonThreatRecord(path: path, folderId: folderId)
             self.onFileDeleted?(url)
         }
     }

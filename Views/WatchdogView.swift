@@ -466,8 +466,9 @@ struct WatchdogView: View {
         let folderId: Int64 = 1
         print("File deleted: \(url.path)")
         
-        // Remove from database
-        await ScanResultsDatabase.shared.removeRecord(path: url.path, folderId: folderId)
+        // Keep infected records visible until the user clears them.
+        await ScanResultsDatabase.shared.removeNonThreatRecord(path: url.path, folderId: folderId)
+        updateThreatsCount()
     }
 }
 

@@ -68,8 +68,7 @@ class NotificationManager: NSObject {
         content.userInfo = [UserInfoKey.presentIfForeground: true]
 
         requestAttention()
-
-        deliver(content)
+        deliverThreatNotification(content)
     }
 
     /// Show notification for scan completion (only if app not in focus)
@@ -225,6 +224,19 @@ class NotificationManager: NSObject {
         }
     }
 
+    private func deliverThreatNotification(_ content: UNNotificationContent) {
+        let notification = NSUserNotification()
+        notification.title = content.title
+        notification.informativeText = content.body
+        notification.soundName = NSUserNotificationDefaultSoundName
+        notification.hasActionButton = true
+        notification.actionButtonTitle = "View"
+        notification.otherButtonTitle = "Dismiss"
+
+        NSUserNotificationCenter.default.delegate = self
+        NSUserNotificationCenter.default.deliver(notification)
+    }
+
     private func requestAttention() {
         DispatchQueue.main.async {
             NSApplication.shared.requestUserAttention(.criticalRequest)
@@ -257,5 +269,15 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         }
         
         completionHandler()
+    }
+}
+
+extension NotificationManager: NSUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: NSUserNotificationCenter, shouldPresent notification: NSUserNotification) -> Bool {
+        !isAppInForeground
+    }
+
+    func userNotificationCenter(_ center: NSUserNotificationCenter, didActivate notification: NSUserNotification) {
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
