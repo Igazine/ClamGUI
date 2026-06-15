@@ -160,59 +160,48 @@ struct ThreatCard: View {
 
             Divider()
 
-            // Action buttons
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    if isQuarantining {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Quarantining...")
-                                .font(.caption)
-                            ProgressView(value: quarantineProgress)
-                                .progressViewStyle(.linear)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Button(action: quarantineFile) {
-                            Label("Quarantine", systemImage: "lock.shield")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.orange)
-                        .disabled(isQuarantining)
-                    }
-
-                    // Open in Finder
-                    if !isQuarantining {
-                        Button(action: openInFinder) {
-                            Label("Show in Finder", systemImage: "folder")
-                                .font(.caption)
-                        }
-                    }
-
-                    Spacer()
-                }
-                
-                // Second row: record/file management actions
-                HStack(spacing: 8) {
-                    Button(action: removeThreatRecord) {
-                        Label("Remove from List", systemImage: "xmark.circle")
+            HStack(spacing: 8) {
+                if isQuarantining {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Quarantining...")
                             .font(.caption)
+                        ProgressView(value: quarantineProgress)
+                            .progressViewStyle(.linear)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(.gray.opacity(0.5))
-                    .help("Remove this detection from Found Threats without changing the file")
-
-                    Button(role: .destructive, action: confirmDeleteFile) {
-                        Label("Delete File", systemImage: "trash")
-                            .font(.caption)
+                    .frame(width: 150, alignment: .leading)
+                } else {
+                    Button(action: quarantineFile) {
+                        Label("Quarantine", systemImage: "lock.shield")
                     }
-                    .buttonStyle(.bordered)
-                    .tint(.red)
-                    .help("Permanently delete the file from disk")
-                    
-                    Spacer()
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .disabled(isQuarantining)
                 }
+
+                Button(action: openInFinder) {
+                    Label("Show in Finder", systemImage: "folder")
+                }
+                .disabled(isQuarantining)
+
+                Button(action: removeThreatRecord) {
+                    Label("Remove from List", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+                .tint(.gray.opacity(0.5))
+                .disabled(isQuarantining)
+                .help("Remove this detection from Found Threats without changing the file")
+
+                Button(role: .destructive, action: confirmDeleteFile) {
+                    Label("Delete File", systemImage: "trash")
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .disabled(isQuarantining)
+                .help("Permanently delete the file from disk")
+
+                Spacer()
             }
+            .font(.caption)
             .alert("Network Drive Detected", isPresented: $showingNetworkWarning) {
                 Button("Delete File Instead", role: .destructive) {
                     Task { await deleteFileFromDisk() }
