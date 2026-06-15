@@ -13,26 +13,36 @@ import AppKit
 class NotificationManager: NSObject {
     static let shared = NotificationManager()
 
+    private let notificationCenter = UNUserNotificationCenter.current()
+
     private override init() {
         super.init()
+        notificationCenter.delegate = self
+        setupNotificationCategories()
         requestAuthorization()
-        UNUserNotificationCenter.current().delegate = self
     }
 
     // MARK: - Window Focus Check
 
-    /// Check if the main app window is currently in focus
-    var isAppInFocus: Bool {
-        return NSApplication.shared.isActive && NSApplication.shared.keyWindow != nil && NSApplication.shared.keyWindow?.isVisible == true
+    /// Check if ClamGUI is the active foreground app.
+    var isAppInForeground: Bool {
+        if Thread.isMainThread {
+            return NSApplication.shared.isActive
+        }
+
+        return DispatchQueue.main.sync {
+            NSApplication.shared.isActive
+        }
     }
 
     // MARK: - Authorization
 
     func requestAuthorization() {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+        notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
                 print("Notification authorization error: \(error.localizedDescription)")
+            } else if !granted {
+                print("Notification authorization was not granted")
             }
         }
     }
@@ -41,32 +51,24 @@ class NotificationManager: NSObject {
 
     /// Show notification when a threat is detected (only if app not in focus)
     func showThreatNotification(fileName: String, threatName: String) {
-        // Don't show notification if app is already in focus
-        guard !isAppInFocus else {
-            print("🔕 Suppressing threat notification (app in focus)")
+        guard !isAppInForeground else {
+            print("Suppressing threat notification because ClamGUI is in the foreground")
             return
         }
         
         let content = UNMutableNotificationContent()
-        content.title = "🚨 Threat Detected"
+        content.title = "Threat Detected"
         content.body = "\(fileName) contains \(threatName)"
-        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: "default"))
+        content.sound = .default
         content.categoryIdentifier = "THREAT_ALERT"
 
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil // Immediate
-        )
-
-        UNUserNotificationCenter.current().add(request)
+        deliver(content)
     }
 
     /// Show notification for scan completion (only if app not in focus)
     func showScanCompleteNotification(fileName: String, isClean: Bool) {
-        // Don't show notification if app is already in focus
-        guard !isAppInFocus else {
-            print("🔕 Suppressing scan notification (app in focus)")
+        guard !isAppInForeground else {
+            print("Suppressing scan notification because ClamGUI is in the foreground")
             return
         }
         
@@ -75,29 +77,22 @@ class NotificationManager: NSObject {
         if isClean {
             content.title = "✓ Scan Complete"
             content.body = "\(fileName) is clean"
-            content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: "default"))
+            content.sound = .default
         } else {
             content.title = "⚠️ Scan Complete"
             content.body = "Threats found in \(fileName)"
-            content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: "default"))
+            content.sound = .default
         }
 
         content.categoryIdentifier = "SCAN_RESULT"
 
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-
-        UNUserNotificationCenter.current().add(request)
+        deliver(content)
     }
 
     /// Show notification for watchdog activity
     func showWatchdogNotification(fileName: String, status: String) {
-        // Don't show notification if app is already in focus
-        guard !isAppInFocus else {
-            print("🔕 Suppressing watchdog notification (app in focus)")
+        guard !isAppInForeground else {
+            print("Suppressing watchdog notification because ClamGUI is in the foreground")
             return
         }
         
@@ -106,13 +101,7 @@ class NotificationManager: NSObject {
         content.body = "\(fileName): \(status)"
         content.sound = .none
 
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-
-        UNUserNotificationCenter.current().add(request)
+        deliver(content)
     }
 
     /// Show notification for outdated virus definitions
@@ -129,7 +118,11 @@ class NotificationManager: NSObject {
             trigger: nil
         )
 
-        UNUserNotificationCenter.current().add(request)
+        notificationCenter.add(request) { error in
+            if let error {
+                print("Failed to schedule outdated definitions notification: \(error.localizedDescription)")
+            }
+        }
     }
     
     // MARK: - Notification Categories
@@ -174,11 +167,53 @@ class NotificationManager: NSObject {
             options: []
         )
         
-        UNUserNotificationCenter.current().setNotificationCategories([
+        notificationCenter.setNotificationCategories([
             threatCategory,
             scanCategory,
             updateCategory
         ])
+    }
+
+    private func deliver(_ content: UNNotificationContent) {
+        notificationCenter.getNotificationSettings { [weak self] settings in
+            guard let self else { return }
+
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                self.add(content)
+            case .notDetermined:
+                self.notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    if let error {
+                        print("Notification authorization error: \(error.localizedDescription)")
+                    }
+
+                    guard granted else {
+                        print("Notification authorization was not granted")
+                        return
+                    }
+
+                    self.add(content)
+                }
+            case .denied:
+                print("Notification not delivered because authorization is denied")
+            @unknown default:
+                print("Notification not delivered because authorization status is unknown")
+            }
+        }
+    }
+
+    private func add(_ content: UNNotificationContent) {
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+
+        notificationCenter.add(request) { error in
+            if let error {
+                print("Failed to schedule notification: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
@@ -186,8 +221,7 @@ class NotificationManager: NSObject {
 
 extension NotificationManager: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        // Show notification even when app is in foreground
-        completionHandler([.banner, .sound])
+        completionHandler([])
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {

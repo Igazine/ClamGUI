@@ -49,6 +49,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Initialize menu bar icon
         menuBarManager = MenuBarManager.shared
+        _ = NotificationManager.shared
 
         // Show main window on launch
         NSApp.setActivationPolicy(.regular)
