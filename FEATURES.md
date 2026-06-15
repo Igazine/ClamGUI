@@ -16,6 +16,7 @@
 |---------|--------|-------|
 | Native `libclamav` scanner | ✅ | Embedded in-process scanner backend |
 | App-owned signature database | ✅ | Uses `~/Library/Application Support/ClamGUI/Database` only |
+| Bundled initial signature database | ✅ | Seeds clean installs from `Contents/Resources/Database` |
 | Host/global database fallback | ❌ | Avoided so packaged builds stay self-contained |
 | Virus definition updates | ⏳ | Current helper exists; final update UX/API should be implemented last |
 | `libfreshclam` updater bridge | 💡 | Candidate replacement for spawning `freshclam` |

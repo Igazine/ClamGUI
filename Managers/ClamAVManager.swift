@@ -51,6 +51,7 @@ class ClamAVManager: ObservableObject {
     // MARK: - ClamAV Installation Check
 
     func checkClamAVInstallation() async {
+        try? await SignatureDatabaseManager.shared.bootstrapBundledDatabaseIfNeeded()
         let status = await ScanEngineManager.shared.prepareScanner()
 
         if status.isReady {

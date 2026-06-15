@@ -13,6 +13,7 @@ fi
 app_bundle="$1"
 frameworks_dir="$app_bundle/Contents/Frameworks"
 macos_dir="$app_bundle/Contents/MacOS"
+database_dir="$app_bundle/Contents/Resources/Database"
 
 if [[ ! -d "$app_bundle/Contents" ]]; then
   echo "error: app bundle not found: $app_bundle" >&2
@@ -54,6 +55,13 @@ done
 
 echo "Checking bundled freshclam startup..."
 "$macos_dir/freshclam" --version
+
+echo "Checking bundled signature databases..."
+if [[ ! -d "$database_dir" ]] ||
+   ! find "$database_dir" -maxdepth 1 -type f \( -name "*.cvd" -o -name "*.cld" -o -name "*.cud" \) | grep -q .; then
+  echo "error: bundled signature database files are missing from $database_dir" >&2
+  exit 72
+fi
 
 echo "ClamAV runtime verification passed:"
 echo "  $app_bundle"

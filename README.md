@@ -22,6 +22,12 @@ The native scanner uses ClamGUI-managed signature databases from
 fall back to a host ClamAV installation's database path, so packaged builds stay
 self-contained and predictable.
 
+Packaged builds include an initial signature database in
+`Contents/Resources/Database`. On first launch, if the app-managed database
+directory is empty, ClamGUI copies those bundled signatures into Application
+Support so the scanner can run without a separate ClamAV install. Existing
+app-managed databases are never overwritten by this bootstrap step.
+
 ## Requirements
 
 - macOS 13.0 or later
@@ -104,10 +110,10 @@ an app bundle directly:
 Scripts/package-clamav-runtime.sh /path/to/ClamGUI.app /opt/homebrew
 ```
 
-The script copies `libclamav`, `freshclam`, and non-system Homebrew dylib
-dependencies into the bundle and rewrites install names to use the app's
-`Contents/Frameworks` directory. It also ad-hoc signs the modified runtime
-files for local development builds.
+The script copies `libclamav`, `freshclam`, non-system Homebrew dylib
+dependencies, and local ClamAV signature database files into the bundle. It
+rewrites install names to use the app's `Contents/Frameworks` directory and
+ad-hoc signs the modified runtime files for local development builds.
 
 To verify an already packaged app bundle:
 

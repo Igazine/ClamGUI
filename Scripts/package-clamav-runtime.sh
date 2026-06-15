@@ -21,7 +21,9 @@ fi
 
 frameworks_dir="$app_bundle/Contents/Frameworks"
 macos_dir="$app_bundle/Contents/MacOS"
-mkdir -p "$frameworks_dir" "$macos_dir"
+resources_dir="$app_bundle/Contents/Resources"
+database_dir="$resources_dir/Database"
+mkdir -p "$frameworks_dir" "$macos_dir" "$database_dir"
 
 find_existing_file() {
   local candidate
@@ -52,6 +54,28 @@ libclamav_path="$(find_existing_file \
     echo "error: libclamav not found. Install ClamAV or pass a ClamAV prefix." >&2
     exit 69
   }
+
+database_source=""
+for candidate in \
+  "$clamav_prefix/var/lib/clamav" \
+  "/opt/homebrew/var/lib/clamav" \
+  "/usr/local/var/lib/clamav" \
+  "$clamav_prefix/share/clamav" \
+  "/opt/homebrew/share/clamav" \
+  "/usr/local/share/clamav"; do
+  if compgen -G "$candidate/*.c[lv]d" >/dev/null || compgen -G "$candidate/*.cud" >/dev/null; then
+    database_source="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$database_source" ]]; then
+  echo "error: ClamAV database files not found. Run freshclam locally or pass a ClamAV prefix with databases." >&2
+  exit 69
+fi
+
+find "$database_dir" -maxdepth 1 -type f \( -name "*.cvd" -o -name "*.cld" -o -name "*.cud" \) -delete
+find "$database_source" -maxdepth 1 -type f \( -name "*.cvd" -o -name "*.cld" -o -name "*.cud" \) -exec cp -p {} "$database_dir/" \;
 
 declare -a queue=("$libclamav_path" "$freshclam_path")
 declare -a copied_sources=()
@@ -163,3 +187,5 @@ done
 echo "Packaged ClamAV runtime into $app_bundle"
 echo "Copied files:"
 printf '  %s\n' "${copied_destinations[@]}" | sort
+echo "Copied database files:"
+find "$database_dir" -maxdepth 1 -type f \( -name "*.cvd" -o -name "*.cld" -o -name "*.cud" \) -print | sort | sed 's/^/  /'

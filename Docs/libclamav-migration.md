@@ -62,6 +62,13 @@ uses app-owned database files only:
 database path. Missing app-managed databases should produce a clear
 scanner-not-ready state.
 
+Packaged builds carry an initial signature database under
+`Contents/Resources/Database`. `SignatureDatabaseManager` bootstraps those files
+into `~/Library/Application Support/ClamGUI/Database` only when the app-managed
+database directory is empty. This gives clean installs a working scanner without
+reintroducing host/global database fallback. It is intentionally separate from
+the final database update UX.
+
 ClamAV documents FreshClam as the official database updater. ClamGUI currently
 has a `SignatureDatabaseManager` that writes an app-local `freshclam.conf` and
 runs `freshclam` against the app database directory. Long-term, this can be
@@ -84,9 +91,9 @@ Current development packaging:
 Scripts/package-clamav-runtime.sh /path/to/ClamGUI.app /opt/homebrew
 ```
 
-The script copies `libclamav`, `freshclam`, and non-system Homebrew dylib
-dependencies into the app bundle, then rewrites Homebrew install names to
-bundle-relative `@loader_path` references and ad-hoc signs the modified Mach-O
-files. This validates the app-bundled runtime shape for local development;
-release automation still needs a reproducible universal build of ClamAV and its
-dependencies.
+The script copies `libclamav`, `freshclam`, non-system Homebrew dylib
+dependencies, and local ClamAV signature database files into the app bundle,
+then rewrites Homebrew install names to bundle-relative `@loader_path`
+references and ad-hoc signs the modified Mach-O files. This validates the
+app-bundled runtime shape for local development; release automation still needs
+a reproducible universal build of ClamAV and its dependencies.

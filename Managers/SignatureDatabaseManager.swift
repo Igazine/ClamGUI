@@ -58,6 +58,31 @@ actor SignatureDatabaseManager {
 
     private init() {}
 
+    func bootstrapBundledDatabaseIfNeeded() async throws {
+        try ensureDirectories()
+
+        guard databaseFiles(in: Self.databaseDirectory).isEmpty else {
+            return
+        }
+
+        guard let bundledDatabaseDirectory = Bundle.main.resourceURL?.appendingPathComponent("Database") else {
+            return
+        }
+
+        let bundledFiles = databaseFiles(in: bundledDatabaseDirectory)
+        guard !bundledFiles.isEmpty else {
+            return
+        }
+
+        for sourceURL in bundledFiles {
+            let destinationURL = Self.databaseDirectory.appendingPathComponent(sourceURL.lastPathComponent)
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                continue
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        }
+    }
+
     func status() async -> SignatureDatabaseStatus {
         let databaseDirectory = Self.databaseDirectory
         let files = databaseFiles(in: databaseDirectory)
