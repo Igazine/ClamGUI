@@ -316,11 +316,9 @@ struct WatchdogView: View {
         guard FileManager.default.fileExists(atPath: settingsManager.watchDirectory, isDirectory: &isDirectory),
               isDirectory.boolValue else { return }
 
-        let folderId: Int64 = 1  // Single folder, ID = 1
-
         let fileManager = FileManager.default
         var filesScannedCount = 0
-        var filesSkippedCount = 0
+        let filesSkippedCount = 0
 
         print("Scanning existing files in: \(settingsManager.watchDirectory)")
 
@@ -340,38 +338,13 @@ struct WatchdogView: View {
                     continue
                 }
                 
-                // Check if file needs scanning
-                let needsScan = ScanResultsDatabase.shared.needsScan(fileURL.path, folderId: folderId)
-
-                if !needsScan {
-                    filesSkippedCount += 1
-                    continue
-                }
-
                 currentScanningFile = fileURL.path
                 let result = await clamAVManager.scanFile(at: fileURL.path)
                 currentScanningFile = nil
-                filesScannedCount += 1
-                
-                let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
-                await ScanResultsDatabase.shared.recordScan(
-                    path: fileURL.path,
-                    folderId: folderId,
-                    status: status,
-                    threatName: result.threatName
-                )
-                
-                // If infected, show modal (only once for initial scan)
-                if case .infected = result.status {
-                    updateThreatsCount()
-                    if !hasShownInitialModal {
-                        hasShownInitialModal = true
-                        await ThreatActionHandler.shared.handleThreatDetected(
-                            filePath: fileURL.path,
-                            threatName: result.threatName ?? "Unknown"
-                        )
-                    }
+                if result.status != .error {
+                    filesScannedCount += 1
                 }
+                await recordWatchdogScanResult(result, showNotification: false, limitInitialModal: true)
             }
         }
 
@@ -392,8 +365,6 @@ struct WatchdogView: View {
             return
         }
 
-        let folderId: Int64 = 1  // Single folder, ID = 1
-
         // New file events must always scan. A copied file may preserve metadata
         // that matches an old record, but it still needs a fresh verdict.
         await MainActor.run {
@@ -403,56 +374,71 @@ struct WatchdogView: View {
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
-        let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
-        await ScanResultsDatabase.shared.recordScan(
-            path: url.path,
-            folderId: folderId,
-            status: status,
-            threatName: result.threatName
-        )
-
-        if case .infected = result.status {
-            if SettingsManager.shared.showNotifications {
-                NotificationManager.shared.showThreatNotification(
-                    fileName: url.lastPathComponent,
-                    threatName: result.threatName ?? "Unknown"
-                )
-                MenuBarManager.shared.notifyThreatFound()
+        if result.status == .error {
+            await MainActor.run {
+                filesScanned -= 1
             }
-
-            updateThreatsCount()
-            await ThreatActionHandler.shared.handleThreatDetected(
-                filePath: url.path,
-                threatName: result.threatName ?? "Unknown"
-            )
         }
+        await recordWatchdogScanResult(result, showNotification: true, limitInitialModal: false)
     }
 
     private func handleModifiedFile(at url: URL) async {
-        let folderId: Int64 = 1
         print("File modified: \(url.path)")
 
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
+        if result.status != .error {
+            await MainActor.run {
+                filesScanned += 1
+            }
+        }
+        await recordWatchdogScanResult(result, showNotification: true, limitInitialModal: false)
+    }
+
+    private func recordWatchdogScanResult(
+        _ result: ClamAVManager.ScanResult,
+        showNotification: Bool,
+        limitInitialModal: Bool
+    ) async {
+        let folderId: Int64 = 1
+        print("Watchdog scan result: \(result.filePath) status=\(result.status) threat=\(result.threatName ?? "none")")
+
         let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
         await ScanResultsDatabase.shared.recordScan(
-            path: url.path,
+            path: result.filePath,
             folderId: folderId,
             status: status,
             threatName: result.threatName
         )
 
-        if case .infected = result.status {
-            if SettingsManager.shared.showNotifications {
-                NotificationManager.shared.showThreatNotification(
-                    fileName: url.lastPathComponent,
+        guard case .infected = result.status else {
+            updateThreatsCount()
+            return
+        }
+
+        if showNotification, SettingsManager.shared.showNotifications {
+            let fileName = URL(fileURLWithPath: result.filePath).lastPathComponent
+            NotificationManager.shared.showThreatNotification(
+                fileName: fileName,
+                threatName: result.threatName ?? "Unknown"
+            )
+            MenuBarManager.shared.notifyThreatFound()
+        }
+
+        updateThreatsCount()
+
+        if limitInitialModal {
+            if !hasShownInitialModal {
+                hasShownInitialModal = true
+                await ThreatActionHandler.shared.handleThreatDetected(
+                    filePath: result.filePath,
                     threatName: result.threatName ?? "Unknown"
                 )
             }
-            updateThreatsCount()
+        } else {
             await ThreatActionHandler.shared.handleThreatDetected(
-                filePath: url.path,
+                filePath: result.filePath,
                 threatName: result.threatName ?? "Unknown"
             )
         }
