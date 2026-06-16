@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var clamAVManager: ClamAVManager
-    @State private var selectedTab = 0
+    @State private var selectedTab: AppTab = .scan
     @State private var isCheckingStatus = true
     @State private var watchdogThreatCount = 0
 
@@ -20,31 +20,27 @@ struct ContentView: View {
                     .padding([.horizontal, .top])
             }
 
-            TabView(selection: $selectedTab) {
+            ClamGUITabBar(selectedTab: $selectedTab, watchdogThreatCount: watchdogThreatCount)
+                .padding(.horizontal)
+                .padding(.top, isCheckingStatus || !clamAVManager.isScannerReady ? 10 : 0)
+                .padding(.bottom, 8)
+
+            Divider()
+
+            ZStack {
                 ScanView()
-                    .tabItem {
-                        Label("Scan File", systemImage: "doc.badge.gearshape")
-                    }
-                    .tag(0)
+                    .tabVisibility(.scan, selectedTab: selectedTab)
 
                 WatchdogView(onThreatCountChanged: { watchdogThreatCount = $0 })
-                    .tabItem {
-                        WatchdogTabLabel(threatCount: watchdogThreatCount)
-                    }
-                    .tag(1)
+                    .tabVisibility(.watchdog, selectedTab: selectedTab)
 
                 SettingsView()
-                    .tabItem {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .tag(2)
+                    .tabVisibility(.settings, selectedTab: selectedTab)
 
                 AboutView()
-                    .tabItem {
-                        Label("About", systemImage: "info.circle")
-                    }
-                    .tag(3)
-                }
+                    .tabVisibility(.about, selectedTab: selectedTab)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: 900, height: 650)
         .padding()
@@ -70,30 +66,137 @@ struct ContentView: View {
 
 }
 
-private struct WatchdogTabLabel: View {
+private enum AppTab: CaseIterable, Identifiable {
+    case scan
+    case watchdog
+    case settings
+    case about
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .scan:
+            return "Scan File"
+        case .watchdog:
+            return "Watchdog"
+        case .settings:
+            return "Settings"
+        case .about:
+            return "About"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .scan:
+            return "doc.badge.gearshape"
+        case .watchdog:
+            return "eye"
+        case .settings:
+            return "gearshape"
+        case .about:
+            return "info.circle"
+        }
+    }
+
+    func systemImage(threatCount: Int) -> String {
+        if self == .watchdog && threatCount > 0 {
+            return "exclamationmark.shield.fill"
+        }
+        return systemImage
+    }
+}
+
+private struct ClamGUITabBar: View {
+    @Binding var selectedTab: AppTab
+    let watchdogThreatCount: Int
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(AppTab.allCases) { tab in
+                TabButton(
+                    tab: tab,
+                    isSelected: selectedTab == tab,
+                    threatCount: tab == .watchdog ? watchdogThreatCount : 0
+                ) {
+                    selectedTab = tab
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct TabButton: View {
+    let tab: AppTab
+    let isSelected: Bool
+    let threatCount: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: tab.systemImage(threatCount: threatCount))
+                    .font(.system(size: 14, weight: .semibold))
+
+                Text(tab.title)
+                    .font(.system(size: 13, weight: .medium))
+
+                if threatCount > 0 {
+                    ThreatCountBadge(threatCount: threatCount)
+                }
+            }
+            .foregroundColor(isSelected ? .accentColor : .primary)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.18), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        if tab == .watchdog && threatCount > 0 {
+            return "Watchdog, \(threatCount) found threats"
+        }
+        return tab.title
+    }
+}
+
+private struct ThreatCountBadge: View {
     let threatCount: Int
 
     var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: threatCount > 0 ? "exclamationmark.shield.fill" : "eye")
-
-            Text("Watchdog")
-
-            if threatCount > 0 {
-                Text(displayCount)
-                    .font(.system(size: 10, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundColor(.white)
-                    .padding(.horizontal, threatCount > 9 ? 5 : 4)
-                    .frame(minWidth: 16, minHeight: 16)
-                    .background(Capsule().fill(Color.red))
-                    .accessibilityLabel("\(threatCount) found threats")
-            }
-        }
+        Text(displayCount)
+            .font(.system(size: 10, weight: .bold))
+            .monospacedDigit()
+            .foregroundColor(.white)
+            .padding(.horizontal, threatCount > 9 ? 5 : 4)
+            .frame(minWidth: 16, minHeight: 16)
+            .background(Capsule().fill(Color.red))
     }
 
     private var displayCount: String {
         threatCount > 99 ? "99+" : "\(threatCount)"
+    }
+}
+
+private extension View {
+    func tabVisibility(_ tab: AppTab, selectedTab: AppTab) -> some View {
+        let isSelected = tab == selectedTab
+        return self
+            .opacity(isSelected ? 1 : 0)
+            .allowsHitTesting(isSelected)
+            .accessibilityHidden(!isSelected)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
