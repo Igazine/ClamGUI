@@ -73,7 +73,7 @@ struct ScanView: View {
 
                 // Selected file info
                 if let url = selectedFileURL {
-                    FileInfoCard(url: url)
+                    ScanFileStatusCard(url: url, result: manualScanResult)
                 }
 
                 Spacer()
@@ -118,7 +118,7 @@ struct ScanView: View {
                 }
 
                 // Scan result
-                if let result = manualScanResult {
+                if let result = manualScanResult, result.status != .error {
                     ScanResultCard(result: result)
                 }
             }
@@ -286,6 +286,52 @@ struct FileInfoCard: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(size))
+    }
+}
+
+struct ScanFileStatusCard: View {
+    let url: URL
+    let result: ClamAVManager.ScanResult?
+
+    var body: some View {
+        if let result, result.status == .error {
+            ScanErrorCard(result: result)
+        } else {
+            FileInfoCard(url: url)
+        }
+    }
+}
+
+struct ScanErrorCard: View {
+    let result: ClamAVManager.ScanResult
+
+    var body: some View {
+        HStack(spacing: 15) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 30))
+                .foregroundColor(.orange)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Scan Error")
+                    .font(.headline)
+                    .foregroundColor(.orange)
+
+                Text(result.threatName ?? "The file could not be scanned.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text(result.filePath)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(8)
     }
 }
 
