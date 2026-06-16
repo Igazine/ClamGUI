@@ -24,6 +24,8 @@ struct SettingsView: View {
             } footer: {
                 Text("Watchdog monitors the selected directory and scans new or modified files while active.")
             }
+
+            IgnoredExtensionsSettingsSection()
             
             // Notifications
             Section("Notifications") {
@@ -293,6 +295,86 @@ struct SettingsView: View {
                 settingsManager.saveSettings()
             }
         }
+    }
+}
+
+private struct IgnoredExtensionsSettingsSection: View {
+    @EnvironmentObject var settingsManager: SettingsManager
+    @State private var newExtension = ""
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 86), spacing: 8)
+    ]
+
+    var body: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    TextField(".crdownload", text: $newExtension)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(addExtensions)
+
+                    Button {
+                        addExtensions()
+                    } label: {
+                        Label("Add", systemImage: "plus")
+                    }
+                    .disabled(newExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button("Restore Defaults") {
+                        settingsManager.resetIgnoredExtensionsToDefaults()
+                    }
+                }
+
+                ScrollView {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                        ForEach(settingsManager.ignoredFileExtensions, id: \.self) { extensionValue in
+                            IgnoredExtensionToken(extensionValue: extensionValue) {
+                                settingsManager.removeIgnoredExtension(extensionValue)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .frame(minHeight: 90, maxHeight: 150)
+            }
+        } header: {
+            Text("Ignored File Extensions")
+        } footer: {
+            Text("Watchdog skips files with these suffixes, useful for partial downloads and files that are constantly modified until complete. Add multiple entries separated by spaces, commas, or semicolons.")
+        }
+    }
+
+    private func addExtensions() {
+        settingsManager.addIgnoredExtensions(from: newExtension)
+        newExtension = ""
+    }
+}
+
+private struct IgnoredExtensionToken: View {
+    let extensionValue: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(extensionValue)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .lineLimit(1)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove \(extensionValue)")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.secondary.opacity(0.12))
+        )
     }
 }
 

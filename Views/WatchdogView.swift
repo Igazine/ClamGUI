@@ -339,6 +339,11 @@ struct WatchdogView: View {
                 if fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) && isDirectory.boolValue {
                     continue
                 }
+
+                if shouldIgnoreFile(fileURL) {
+                    filesSkippedCount += 1
+                    continue
+                }
                 
                 // Check if file needs scanning
                 let needsScan = ScanResultsDatabase.shared.needsScan(fileURL.path, folderId: folderId)
@@ -392,6 +397,13 @@ struct WatchdogView: View {
             return
         }
 
+        guard !shouldIgnoreFile(url) else {
+            await MainActor.run {
+                filesSkipped += 1
+            }
+            return
+        }
+
         let folderId: Int64 = 1  // Single folder, ID = 1
 
         // New file events must always scan. A copied file may preserve metadata
@@ -429,6 +441,13 @@ struct WatchdogView: View {
     }
 
     private func handleModifiedFile(at url: URL) async {
+        guard !shouldIgnoreFile(url) else {
+            await MainActor.run {
+                filesSkipped += 1
+            }
+            return
+        }
+
         let folderId: Int64 = 1
         print("File modified: \(url.path)")
 
@@ -465,6 +484,14 @@ struct WatchdogView: View {
         // Keep infected records visible until the user clears them.
         await ScanResultsDatabase.shared.removeNonThreatRecord(path: url.path, folderId: folderId)
         updateThreatsCount()
+    }
+
+    private func shouldIgnoreFile(_ url: URL) -> Bool {
+        let shouldIgnore = settingsManager.shouldIgnoreFileForScanning(url)
+        if shouldIgnore {
+            print("Skipping ignored file extension: \(url.lastPathComponent)")
+        }
+        return shouldIgnore
     }
 }
 

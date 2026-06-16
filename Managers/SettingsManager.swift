@@ -24,6 +24,7 @@ class SettingsManager: ObservableObject {
     @Published var hideMenuBarIcon: Bool = false
     @Published var quarantineEnabled: Bool = false
     @Published var quarantinePath: String = ""
+    @Published var ignoredFileExtensions: [String] = SettingsManager.defaultIgnoredFileExtensions
     
     // Database retention settings
     @Published var dbMaxRecords: Int = 500_000
@@ -41,6 +42,21 @@ class SettingsManager: ObservableObject {
     private let userDefaultsKey = "com.clamgui.settings"
     private let dbSettingsKey = "com.clamgui.dbsettings"
     private var cancellables = Set<AnyCancellable>()
+
+    static let defaultIgnoredFileExtensions: [String] = [
+        ".!bt", ".!qB", ".!ut", ".aria2", ".bc!", ".crdownload", ".download",
+        ".dtapart", ".fdmdownload", ".filepart", ".jc!", ".opdownload", ".part",
+        ".partial", ".qbt", ".qb!", ".tmp", ".temp", ".utpart", ".xlx", ".xxxxxx",
+        ".ytdl", ".ytdlpart",
+        ".swp", ".swo", ".swn", ".swap", ".lck", ".lock",
+        ".bak", ".backup", ".old", ".orig", ".rej",
+        ".cache", ".chk", ".dmp", ".dump", ".etl", ".log", ".trace",
+        ".icloud", ".downloadpart", ".sdownload", ".safaridownload",
+        ".moz-download", ".moz-extension", ".com.apple.timemachine",
+        ".part.met", ".met", ".fastresume", ".resume", ".pieces", ".torrentpart"
+    ].map { SettingsManager.normalizedExtension($0) }
+        .removingDuplicates()
+        .sorted()
     
     // MARK: - Initialization
     
@@ -61,6 +77,7 @@ class SettingsManager: ObservableObject {
             "hideMenuBarIcon": hideMenuBarIcon,
             "quarantineEnabled": quarantineEnabled,
             "quarantinePath": quarantinePath,
+            "ignoredFileExtensions": ignoredFileExtensions,
             "threatAutoAction": threatAutoAction,
             "threatAutoActionValue": threatAutoActionValue.rawValue,
             "clearExecutableBit": clearExecutableBit
@@ -88,6 +105,7 @@ class SettingsManager: ObservableObject {
             $hideMenuBarIcon.map { _ in }.eraseToAnyPublisher(),
             $quarantineEnabled.map { _ in }.eraseToAnyPublisher(),
             $quarantinePath.map { _ in }.eraseToAnyPublisher(),
+            $ignoredFileExtensions.map { _ in }.eraseToAnyPublisher(),
             $dbMaxRecords.map { _ in }.eraseToAnyPublisher(),
             $dbRetentionDays.map { _ in }.eraseToAnyPublisher(),
             $dbCleanupOnFolderChange.map { _ in }.eraseToAnyPublisher(),
@@ -125,6 +143,9 @@ class SettingsManager: ObservableObject {
         hideMenuBarIcon = settings["hideMenuBarIcon"] as? Bool ?? false
         quarantineEnabled = settings["quarantineEnabled"] as? Bool ?? false
         quarantinePath = settings["quarantinePath"] as? String ?? ""
+        ignoredFileExtensions = normalizedIgnoredExtensions(
+            settings["ignoredFileExtensions"] as? [String] ?? Self.defaultIgnoredFileExtensions
+        )
         threatAutoAction = settings["threatAutoAction"] as? Bool ?? false
         if let actionValue = settings["threatAutoActionValue"] as? String,
            let action = ThreatAction(rawValue: actionValue) {
@@ -166,6 +187,7 @@ class SettingsManager: ObservableObject {
         threatAutoAction = false
         threatAutoActionValue = .quarantine
         clearExecutableBit = false
+        ignoredFileExtensions = Self.defaultIgnoredFileExtensions
 
         // Reset database settings
         dbMaxRecords = DatabaseConfig.maxRecordsPerFolder
@@ -174,6 +196,47 @@ class SettingsManager: ObservableObject {
         dbAutoMaintenance = true
 
         saveSettings()
+    }
+
+    func addIgnoredExtensions(from input: String) {
+        let values = input
+            .components(separatedBy: CharacterSet(charactersIn: ", \n\t;"))
+            .map(Self.normalizedExtension)
+            .filter { !$0.isEmpty }
+
+        ignoredFileExtensions = normalizedIgnoredExtensions(ignoredFileExtensions + values)
+    }
+
+    func removeIgnoredExtension(_ extensionValue: String) {
+        let normalized = Self.normalizedExtension(extensionValue)
+        ignoredFileExtensions.removeAll { $0.caseInsensitiveCompare(normalized) == .orderedSame }
+    }
+
+    func resetIgnoredExtensionsToDefaults() {
+        ignoredFileExtensions = Self.defaultIgnoredFileExtensions
+    }
+
+    func shouldIgnoreFileForScanning(_ url: URL) -> Bool {
+        let fileName = url.lastPathComponent.lowercased()
+        return ignoredFileExtensions.contains { ignoredExtension in
+            fileName.hasSuffix(ignoredExtension.lowercased())
+        }
+    }
+
+    private func normalizedIgnoredExtensions(_ values: [String]) -> [String] {
+        values
+            .map(Self.normalizedExtension)
+            .filter { !$0.isEmpty }
+            .removingDuplicates()
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    private static func normalizedExtension(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let withoutLeadingWildcards = trimmed.replacingOccurrences(of: "*.", with: ".")
+        let normalized = withoutLeadingWildcards.hasPrefix(".") ? withoutLeadingWildcards : ".\(withoutLeadingWildcards)"
+        return normalized.lowercased()
     }
 
     // MARK: - Login Item Management
@@ -214,6 +277,15 @@ class SettingsManager: ObservableObject {
         var error: NSDictionary?
         if let appleScript = NSAppleScript(source: script) {
             appleScript.executeAndReturnError(&error)
+        }
+    }
+}
+
+private extension Array where Element == String {
+    func removingDuplicates() -> [String] {
+        var seen = Set<String>()
+        return filter { value in
+            seen.insert(value.lowercased()).inserted
         }
     }
 }
