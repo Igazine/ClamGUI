@@ -29,7 +29,7 @@ struct ContentView: View {
 
                 WatchdogView(onThreatCountChanged: { watchdogThreatCount = $0 })
                     .tabItem {
-                        Label(watchdogTabTitle, systemImage: watchdogThreatCount > 0 ? "exclamationmark.shield.fill" : "eye")
+                        WatchdogTabLabel(threatCount: watchdogThreatCount)
                     }
                     .tag(1)
 
@@ -68,8 +68,32 @@ struct ContentView: View {
         watchdogThreatCount = records.count
     }
 
-    private var watchdogTabTitle: String {
-        watchdogThreatCount > 0 ? "Watchdog (\(watchdogThreatCount))" : "Watchdog"
+}
+
+private struct WatchdogTabLabel: View {
+    let threatCount: Int
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: threatCount > 0 ? "exclamationmark.shield.fill" : "eye")
+
+            Text("Watchdog")
+
+            if threatCount > 0 {
+                Text(displayCount)
+                    .font(.system(size: 10, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundColor(.white)
+                    .padding(.horizontal, threatCount > 9 ? 5 : 4)
+                    .frame(minWidth: 16, minHeight: 16)
+                    .background(Capsule().fill(Color.red))
+                    .accessibilityLabel("\(threatCount) found threats")
+            }
+        }
+    }
+
+    private var displayCount: String {
+        threatCount > 99 ? "99+" : "\(threatCount)"
     }
 }
 
