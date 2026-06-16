@@ -61,11 +61,11 @@ struct WatchdogView: View {
                 // Watch toggle
                 Toggle("Active", isOn: $isWatching)
                     .toggleStyle(.switch)
-                    .disabled(!canActivateWatchdog)
+                    .disabled(settingsManager.watchDirectory.isEmpty || !clamAVManager.isScannerReady)
             }
             
             .onChange(of: clamAVManager.isScannerReady) { isReady in
-                if isReady && canActivateWatchdog && !shouldAutoStart {
+                if isReady && !settingsManager.watchDirectory.isEmpty && !shouldAutoStart {
                     shouldAutoStart = true
                     isWatching = true
                 } else if !isReady && isWatching {
@@ -75,7 +75,7 @@ struct WatchdogView: View {
             
             // Ensure we check on appear too in case the scanner was ready before this view loaded.
             .onAppear {
-                if clamAVManager.isScannerReady && canActivateWatchdog && !shouldAutoStart {
+                if clamAVManager.isScannerReady && !settingsManager.watchDirectory.isEmpty && !shouldAutoStart {
                     shouldAutoStart = true
                     isWatching = true
                 }
@@ -101,12 +101,6 @@ struct WatchdogView: View {
                     Label(settingsManager.watchDirectory, systemImage: "folder.fill")
                         .font(.caption)
                         .foregroundColor(.secondary)
-
-                    if let validationReason = watchdogDirectoryValidation.reason {
-                        Label(validationReason, systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
                 }
             }
             .padding()
@@ -213,12 +207,12 @@ struct WatchdogView: View {
             }
             resetWatchdogCounters()
             setupDirectoryWatcher()
-            if shouldResume, canActivateWatchdog {
+            if shouldResume, !settingsManager.watchDirectory.isEmpty, clamAVManager.isScannerReady {
                 isWatching = true
             }
         }
         .sheet(isPresented: $showingFoundThreats) {
-            FoundThreatsSheet(onThreatsChanged: updateThreatsCount)
+            FoundThreatsSheet()
         }
         .sheet(isPresented: $threatHandler.showingThreatModal) {
             ThreatActionModal()
@@ -239,14 +233,6 @@ struct WatchdogView: View {
         return isWatching ? "Watching for new files..." : "Watchdog inactive"
     }
 
-    private var watchdogDirectoryValidation: ScanPathValidator.DirectoryValidation {
-        ScanPathValidator.validateWatchdogDirectory(settingsManager.watchDirectory)
-    }
-
-    private var canActivateWatchdog: Bool {
-        !settingsManager.watchDirectory.isEmpty && clamAVManager.isScannerReady && watchdogDirectoryValidation.isAllowed
-    }
-
     // MARK: - Directory Selection
 
     private func selectDirectory() {
@@ -257,23 +243,15 @@ struct WatchdogView: View {
         panel.message = "Select directory to watch"
 
         panel.begin { response in
-            if response == .OK, let path = panel.url?.path {
-                let validation = ScanPathValidator.validateWatchdogDirectory(path)
-                guard validation.isAllowed else {
-                    showWatchdogDirectoryRestrictionAlert(reason: validation.reason)
-                    return
-                }
-
-                settingsManager.watchDirectory = path
+            if response == .OK {
+                settingsManager.watchDirectory = panel.url?.path ?? ""
                 settingsManager.saveSettings()
             }
         }
     }
 
     private func setupDirectoryWatcher() {
-        guard !settingsManager.watchDirectory.isEmpty,
-              watchdogDirectoryValidation.isAllowed else {
-            isWatching = false
+        guard !settingsManager.watchDirectory.isEmpty else {
             return
         }
 
@@ -361,10 +339,6 @@ struct WatchdogView: View {
                 if fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) && isDirectory.boolValue {
                     continue
                 }
-
-                if shouldIgnoreFile(fileURL) {
-                    continue
-                }
                 
                 // Check if file needs scanning
                 let needsScan = ScanResultsDatabase.shared.needsScan(fileURL.path, folderId: folderId)
@@ -377,9 +351,7 @@ struct WatchdogView: View {
                 currentScanningFile = fileURL.path
                 let result = await clamAVManager.scanFile(at: fileURL.path)
                 currentScanningFile = nil
-                if result.status != .error {
-                    filesScannedCount += 1
-                }
+                filesScannedCount += 1
                 
                 let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
                 await ScanResultsDatabase.shared.recordScan(
@@ -420,20 +392,17 @@ struct WatchdogView: View {
             return
         }
 
-        guard !shouldIgnoreFile(url) else {
-            return
-        }
-
         let folderId: Int64 = 1  // Single folder, ID = 1
+
+        // New file events must always scan. A copied file may preserve metadata
+        // that matches an old record, but it still needs a fresh verdict.
+        await MainActor.run {
+            filesScanned += 1
+        }
 
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
-        if result.status != .error {
-            await MainActor.run {
-                filesScanned += 1
-            }
-        }
         let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
         await ScanResultsDatabase.shared.recordScan(
             path: url.path,
@@ -460,21 +429,12 @@ struct WatchdogView: View {
     }
 
     private func handleModifiedFile(at url: URL) async {
-        guard !shouldIgnoreFile(url) else {
-            return
-        }
-
         let folderId: Int64 = 1
         print("File modified: \(url.path)")
 
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
-        if result.status != .error {
-            await MainActor.run {
-                filesScanned += 1
-            }
-        }
         let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
         await ScanResultsDatabase.shared.recordScan(
             path: url.path,
@@ -505,23 +465,6 @@ struct WatchdogView: View {
         // Keep infected records visible until the user clears them.
         await ScanResultsDatabase.shared.removeNonThreatRecord(path: url.path, folderId: folderId)
         updateThreatsCount()
-    }
-
-    private func shouldIgnoreFile(_ url: URL) -> Bool {
-        let shouldIgnore = settingsManager.shouldIgnoreFileForScanning(url)
-        if shouldIgnore {
-            print("Skipping ignored file extension: \(url.lastPathComponent)")
-        }
-        return shouldIgnore
-    }
-
-    private func showWatchdogDirectoryRestrictionAlert(reason: String?) {
-        let alert = NSAlert()
-        alert.messageText = "Watchdog Folder Not Allowed"
-        alert.informativeText = reason ?? "Choose a regular user folder that ClamGUI can read and modify."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
     }
 }
 

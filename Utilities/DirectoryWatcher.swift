@@ -118,15 +118,10 @@ class DirectoryWatcher: ObservableObject {
                 continue
             }
 
-            let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
-            let resourceValues = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path) else { continue }
 
-            let modDate = attrs?[.modificationDate] as? Date
-                ?? resourceValues?.contentModificationDate
-                ?? Date.distantPast
-            let fileSize = attrs?[.size] as? UInt64
-                ?? resourceValues?.fileSize.map(UInt64.init)
-                ?? 0
+            let modDate = attrs[.modificationDate] as? Date ?? Date.distantPast
+            let fileSize = attrs[.size] as? UInt64 ?? 0
 
             files[fileURL.path] = FileState(modificationDate: modDate, size: fileSize)
         }
