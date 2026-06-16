@@ -40,7 +40,12 @@ class DirectoryWatcher: ObservableObject {
     }
 
     func startWatching() {
-        guard !watchDirectory.isEmpty, !isWatching else { return }
+        guard !watchDirectory.isEmpty else {
+            print("Cannot start Watchdog: watchDirectory is empty")
+            return
+        }
+
+        guard !isWatching else { return }
 
         guard let initialFiles = snapshotFiles() else {
             print("Cannot watch unavailable directory: \(watchDirectory)")

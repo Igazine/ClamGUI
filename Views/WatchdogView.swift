@@ -63,24 +63,6 @@ struct WatchdogView: View {
                     .toggleStyle(.switch)
                     .disabled(settingsManager.watchDirectory.isEmpty || !clamAVManager.isScannerReady)
             }
-            
-            .onChange(of: clamAVManager.isScannerReady) { isReady in
-                if isReady && !settingsManager.watchDirectory.isEmpty && !shouldAutoStart {
-                    shouldAutoStart = true
-                    isWatching = true
-                } else if !isReady && isWatching {
-                    isWatching = false
-                }
-            }
-            
-            // Ensure we check on appear too in case the scanner was ready before this view loaded.
-            .onAppear {
-                if clamAVManager.isScannerReady && !settingsManager.watchDirectory.isEmpty && !shouldAutoStart {
-                    shouldAutoStart = true
-                    isWatching = true
-                }
-            }
-            
             // Directory selection
             VStack(alignment: .leading, spacing: 10) {
                 Text("Watched Directory")
@@ -191,9 +173,19 @@ struct WatchdogView: View {
         .padding()
         .onAppear {
             setupDirectoryWatcher()
+            autoStartWatchdogIfPossible()
+        }
+        .onChange(of: clamAVManager.isScannerReady) { isReady in
+            if isReady {
+                autoStartWatchdogIfPossible()
+            } else if isWatching {
+                isWatching = false
+                directoryWatcher.stopWatching()
+            }
         }
         .onChange(of: isWatching) { newValue in
             if newValue {
+                setupDirectoryWatcher()
                 directoryWatcher.startWatching()
             } else {
                 directoryWatcher.stopWatching()
@@ -209,6 +201,7 @@ struct WatchdogView: View {
             setupDirectoryWatcher()
             if shouldResume, !settingsManager.watchDirectory.isEmpty, clamAVManager.isScannerReady {
                 isWatching = true
+                directoryWatcher.startWatching()
             }
         }
         .sheet(isPresented: $showingFoundThreats) {
@@ -284,6 +277,19 @@ struct WatchdogView: View {
         }
 
         updateThreatsCount()
+    }
+
+    private func autoStartWatchdogIfPossible() {
+        guard clamAVManager.isScannerReady,
+              !settingsManager.watchDirectory.isEmpty,
+              !shouldAutoStart else {
+            return
+        }
+
+        shouldAutoStart = true
+        setupDirectoryWatcher()
+        isWatching = true
+        directoryWatcher.startWatching()
     }
 
     private func resetWatchdogCounters() {
