@@ -445,7 +445,7 @@ struct WatchdogView: View {
         let folderId: Int64 = 1
         if request.reason == .existing,
            let record = ScanResultsDatabase.shared.getRecord(url.path, folderId: folderId),
-           record.status != .error,
+           record.status == .clean,
            !ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId) {
             print("Skipping unchanged existing file: \(url.path)")
             filesSkipped += 1
