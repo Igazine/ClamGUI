@@ -377,7 +377,9 @@ struct WatchdogView: View {
                 currentScanningFile = fileURL.path
                 let result = await clamAVManager.scanFile(at: fileURL.path)
                 currentScanningFile = nil
-                filesScannedCount += 1
+                if result.status != .error {
+                    filesScannedCount += 1
+                }
                 
                 let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
                 await ScanResultsDatabase.shared.recordScan(
@@ -424,15 +426,14 @@ struct WatchdogView: View {
 
         let folderId: Int64 = 1  // Single folder, ID = 1
 
-        // New file events must always scan. A copied file may preserve metadata
-        // that matches an old record, but it still needs a fresh verdict.
-        await MainActor.run {
-            filesScanned += 1
-        }
-        
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
+        if result.status != .error {
+            await MainActor.run {
+                filesScanned += 1
+            }
+        }
         let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
         await ScanResultsDatabase.shared.recordScan(
             path: url.path,
@@ -469,6 +470,11 @@ struct WatchdogView: View {
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
+        if result.status != .error {
+            await MainActor.run {
+                filesScanned += 1
+            }
+        }
         let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
         await ScanResultsDatabase.shared.recordScan(
             path: url.path,

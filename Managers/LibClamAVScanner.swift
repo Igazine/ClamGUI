@@ -132,6 +132,10 @@ actor LibClamAVScanner: MalwareScanner {
             }
         }
 
+        guard result == LibClamAVConstants.success else {
+            return ClamAVManager.ScanResult(filePath: path, status: .error, threatName: errorMessage(result, api: api), timestamp: Date())
+        }
+
         switch verdict {
         case LibClamAVConstants.verdictNothingFound,
              LibClamAVConstants.verdictTrusted:
@@ -141,13 +145,7 @@ actor LibClamAVScanner: MalwareScanner {
             let threatName = virusNamePointer.map { String(cString: $0) } ?? "Unknown"
             return ClamAVManager.ScanResult(filePath: path, status: .infected, threatName: threatName, timestamp: Date())
         default:
-            break
-        }
-
-        if result == LibClamAVConstants.success {
-            return ClamAVManager.ScanResult(filePath: path, status: .clean, threatName: nil, timestamp: Date())
-        } else {
-            return ClamAVManager.ScanResult(filePath: path, status: .error, threatName: errorMessage(result, api: api), timestamp: Date())
+            return ClamAVManager.ScanResult(filePath: path, status: .error, threatName: "Unexpected scanner verdict \(verdict)", timestamp: Date())
         }
     }
 

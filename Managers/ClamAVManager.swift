@@ -81,6 +81,12 @@ class ClamAVManager: ObservableObject {
 
     /// Scan a single file and wait for the result.
     func scanFile(at path: String) async -> ScanResult {
+        if let preflightError = validateScannableFile(at: path) {
+            let result = ScanResult(filePath: path, status: .error, threatName: preflightError, timestamp: Date())
+            lastScanResult = result
+            return result
+        }
+
         isScanning = true
         currentScanProgress = ScanProgressUpdate(inspectedObjects: 0, recursionLevel: 0, fileType: nil)
         currentScanProgressMessage = currentScanProgress?.displayMessage ?? "Preparing scan..."
@@ -101,6 +107,25 @@ class ClamAVManager: ObservableObject {
         lastScanResult = result
 
         return result
+    }
+
+    private func validateScannableFile(at path: String) -> String? {
+        let fileManager = FileManager.default
+        var isDirectory: ObjCBool = false
+
+        guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory) else {
+            return "File does not exist"
+        }
+
+        guard !isDirectory.boolValue else {
+            return "Manual scan expects a file, not a directory"
+        }
+
+        guard fileManager.isReadableFile(atPath: path) else {
+            return "ClamGUI cannot read this file with current permissions"
+        }
+
+        return nil
     }
 
     // MARK: - Virus Definitions
