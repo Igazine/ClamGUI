@@ -132,6 +132,11 @@ actor LibClamAVScanner: MalwareScanner {
             }
         }
 
+        if result == LibClamAVConstants.legacyVirusReturn {
+            let threatName = virusNamePointer.map { String(cString: $0) } ?? "Unknown"
+            return ClamAVManager.ScanResult(filePath: path, status: .infected, threatName: threatName, timestamp: Date())
+        }
+
         guard result == LibClamAVConstants.success else {
             return ClamAVManager.ScanResult(filePath: path, status: .error, threatName: errorMessage(result, api: api), timestamp: Date())
         }
@@ -311,6 +316,7 @@ private enum LibClamAVConstants {
     static let engineBytecodeTimeout: Int32 = 16
     static let engineMaxScanTime: Int32 = 31
     static let scanCallbackPreScan: Int32 = 1
+    static let legacyVirusReturn: Int32 = 1
     static let verdictNothingFound: Int32 = 0
     static let verdictTrusted: Int32 = 1
     static let verdictStrongIndicator: Int32 = 2
