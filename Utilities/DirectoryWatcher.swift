@@ -15,6 +15,7 @@ class DirectoryWatcher: ObservableObject {
     @Published var isWatching = false
     @Published var recordCount: Int = 0
     @Published var threatsCount: Int = 0
+    @Published var lastStatusMessage: String = "Watchdog inactive"
 
     // Callbacks
     var onFileAdded: ((URL) -> Void)?
@@ -23,9 +24,10 @@ class DirectoryWatcher: ObservableObject {
     var onScanExistingFiles: (() async -> Void)?
     var onDatabaseStatsUpdate: ((Int, Int) -> Void)?
 
-    // Polling timer
-    private var timer: Timer?
-    private let pollInterval: TimeInterval = 2.0
+    // Polling is the source of truth; filesystem events only wake it sooner.
+    private var pollTimer: DispatchSourceTimer?
+    private let pollQueue = DispatchQueue(label: "com.clamgui.watchdog.poll", qos: .utility)
+    private let pollInterval: TimeInterval = 1.0
     private var directoryEventSource: DispatchSourceFileSystemObject?
     private var directoryFileDescriptor: CInt = -1
     
@@ -48,7 +50,7 @@ class DirectoryWatcher: ObservableObject {
         guard !isWatching else { return true }
 
         guard let initialFiles = snapshotFiles() else {
-            print("Cannot watch unavailable directory: \(watchDirectory)")
+            publishStatus("Cannot watch unavailable directory: \(watchDirectory)")
             return false
         }
 
@@ -57,31 +59,39 @@ class DirectoryWatcher: ObservableObject {
         knownFilesLock.unlock()
         
         isWatching = true
-        let pollTimer = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
-            self?.performPoll()
-        }
-        RunLoop.main.add(pollTimer, forMode: .common)
-        timer = pollTimer
+        startPollTimer()
         startDirectoryEventSource()
 
         Task { @MainActor in
             await onScanExistingFiles?()
         }
         
-        print("Started watching: \(watchDirectory)")
+        publishStatus("Watching \(watchDirectory)")
         return true
     }
 
     func stopWatching() {
-        timer?.invalidate()
-        timer = nil
+        pollTimer?.cancel()
+        pollTimer = nil
         directoryEventSource?.cancel()
         directoryEventSource = nil
         isWatching = false
         knownFilesLock.lock()
         knownFiles.removeAll()
         knownFilesLock.unlock()
-        print("Stopped watching")
+        publishStatus("Watchdog inactive")
+    }
+
+    private func startPollTimer() {
+        pollTimer?.cancel()
+
+        let source = DispatchSource.makeTimerSource(queue: pollQueue)
+        source.schedule(deadline: .now() + pollInterval, repeating: pollInterval)
+        source.setEventHandler { [weak self] in
+            self?.performPoll()
+        }
+        pollTimer = source
+        source.resume()
     }
 
     private func startDirectoryEventSource() {
@@ -89,7 +99,7 @@ class DirectoryWatcher: ObservableObject {
 
         let descriptor = open(watchDirectory, O_EVTONLY)
         guard descriptor >= 0 else {
-            print("Could not open watched directory for filesystem events: \(watchDirectory)")
+            publishStatus("Watching by polling; filesystem events unavailable for \(watchDirectory)")
             return
         }
 
@@ -97,17 +107,17 @@ class DirectoryWatcher: ObservableObject {
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
             eventMask: [.write, .extend, .attrib, .link, .rename, .delete],
-            queue: DispatchQueue.main
+            queue: pollQueue
         )
 
         source.setEventHandler { [weak self] in
             self?.performPoll()
         }
 
-        source.setCancelHandler { [weak self] in
+        source.setCancelHandler { [weak self, descriptor] in
+            close(descriptor)
             guard let self else { return }
-            if self.directoryFileDescriptor >= 0 {
-                close(self.directoryFileDescriptor)
+            if self.directoryFileDescriptor == descriptor {
                 self.directoryFileDescriptor = -1
             }
         }
@@ -118,6 +128,7 @@ class DirectoryWatcher: ObservableObject {
 
     private func performPoll() {
         guard let currentFiles = snapshotFiles() else {
+            publishStatus("Cannot scan watched directory: \(watchDirectory)")
             return
         }
 
@@ -126,14 +137,17 @@ class DirectoryWatcher: ObservableObject {
         for (path, state) in currentFiles {
             if let knownState = knownFiles[path] {
                 if state.modificationDate > knownState.modificationDate || state.size != knownState.size {
+                    publishStatus("Detected modified file: \(URL(fileURLWithPath: path).lastPathComponent)")
                     handleFileModified(path: path)
                 }
             } else {
+                publishStatus("Detected new file: \(URL(fileURLWithPath: path).lastPathComponent)")
                 handleFileAdded(path: path)
             }
         }
         
         for path in knownFiles.keys where currentFiles[path] == nil {
+            publishStatus("Detected deleted file: \(URL(fileURLWithPath: path).lastPathComponent)")
             handleFileDeleted(path: path)
         }
         
@@ -182,6 +196,7 @@ class DirectoryWatcher: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + modificationDebounceInterval) { [weak self] in
             guard let self = self, FileManager.default.fileExists(atPath: path) else { return }
             // Don't enqueue here - let WatchdogView handle queueing via onFileAdded callback
+            self.publishStatus("Scanning new file: \(url.lastPathComponent)")
             Task { @MainActor in self.onFileAdded?(url) }
         }
     }
@@ -200,6 +215,7 @@ class DirectoryWatcher: ObservableObject {
             self.pendingModifications.remove(path)
             self.modificationLock.unlock()
             guard FileManager.default.fileExists(atPath: path) else { return }
+            self.publishStatus("Scanning modified file: \(url.lastPathComponent)")
             Task { @MainActor in self.onFileModified?(url) }
         }
     }
@@ -221,6 +237,13 @@ class DirectoryWatcher: ObservableObject {
             self.recordCount = count
             self.threatsCount = threats
             self.onDatabaseStatsUpdate?(count, threats)
+        }
+    }
+
+    private func publishStatus(_ message: String) {
+        print(message)
+        DispatchQueue.main.async {
+            self.lastStatusMessage = message
         }
     }
 }

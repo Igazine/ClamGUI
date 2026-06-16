@@ -132,6 +132,14 @@ struct WatchdogView: View {
                     }
                     .font(.caption2)
                     .foregroundColor(.secondary)
+
+                    if isWatcherRunning {
+                        Text(directoryWatcher.lastStatusMessage)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 }
 
                 Spacer()
@@ -233,6 +241,9 @@ struct WatchdogView: View {
         }
         if currentScanningFile != nil {
             return "Scanning changed files..."
+        }
+        if !settingsManager.autoScanOnFileAdded {
+            return "Watching, but auto-scan is disabled"
         }
         return "Watching for new files..."
     }
