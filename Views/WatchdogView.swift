@@ -21,6 +21,9 @@ struct WatchdogView: View {
     @State private var recordCount: Int = 0
     @State private var showingFoundThreats = false
     @State private var hasShownInitialModal = false  // Track if we've shown modal for initial scan threats
+    @State private var scanQueue: [WatchdogScanRequest] = []
+    @State private var queuedScanPaths: Set<String> = []
+    @State private var isProcessingScanQueue = false
     
     // Auto-start watching once a scanner backend is ready and a directory is set.
     @State private var shouldAutoStart = false
@@ -253,14 +256,14 @@ struct WatchdogView: View {
         // Handle new file added
         directoryWatcher.onFileAdded = { url in
             Task { @MainActor in
-                await scanNewFile(at: url)
+                enqueueScan(at: url, reason: .added)
             }
         }
 
         // Handle file modified
         directoryWatcher.onFileModified = { url in
             Task { @MainActor in
-                await handleModifiedFile(at: url)
+                enqueueScan(at: url, reason: .modified)
             }
         }
 
@@ -298,6 +301,9 @@ struct WatchdogView: View {
         threatsCount = 0
         recordCount = 0
         currentScanningFile = nil
+        scanQueue.removeAll()
+        queuedScanPaths.removeAll()
+        isProcessingScanQueue = false
         hasShownInitialModal = false
         shouldAutoStart = false
     }
@@ -323,9 +329,6 @@ struct WatchdogView: View {
               isDirectory.boolValue else { return }
 
         let fileManager = FileManager.default
-        var filesScannedCount = 0
-        let filesSkippedCount = 0
-
         print("Scanning existing files in: \(settingsManager.watchDirectory)")
 
         // Enumerate all files in directory
@@ -343,74 +346,155 @@ struct WatchdogView: View {
                 if fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) && isDirectory.boolValue {
                     continue
                 }
-                
-                currentScanningFile = fileURL.path
-                let result = await clamAVManager.scanFile(at: fileURL.path)
-                currentScanningFile = nil
-                if result.status != .error {
-                    filesScannedCount += 1
-                }
-                await recordWatchdogScanResult(result, showNotification: false, limitInitialModal: true)
-            }
-        }
 
-        // Update counts
-        await MainActor.run {
-            self.filesScanned = filesScannedCount
-            self.filesSkipped = filesSkippedCount
+                enqueueScan(at: fileURL, reason: .existing)
+            }
         }
 
         updateThreatsCount()
 
-        print("Scanned \(filesScannedCount) existing files, skipped \(filesSkippedCount) unchanged files")
+        print("Queued existing files for Watchdog scan")
     }
 
-    private func scanNewFile(at url: URL) async {
+    private func enqueueScan(at url: URL, reason: WatchdogScanReason) {
         guard settingsManager.autoScanOnFileAdded else {
-            print("Auto-scan disabled, ignoring new file: \(url.path)")
+            print("Auto-scan disabled, ignoring file: \(url.path)")
+            return
+        }
+
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            return
+        }
+
+        if isDirectory.boolValue {
+            enqueueDirectoryContents(at: url, reason: reason)
+            return
+        }
+
+        guard !settingsManager.shouldIgnoreFileForScanning(url) else {
+            return
+        }
+
+        guard queuedScanPaths.insert(url.path).inserted else {
+            return
+        }
+
+        scanQueue.append(WatchdogScanRequest(url: url, reason: reason))
+        processScanQueueIfNeeded()
+    }
+
+    private func enqueueDirectoryContents(at directoryURL: URL, reason: WatchdogScanReason) {
+        guard let enumerator = FileManager.default.enumerator(
+            at: directoryURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles],
+            errorHandler: nil
+        ) else {
+            return
+        }
+
+        for case let fileURL as URL in enumerator {
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory), isDirectory.boolValue {
+                continue
+            }
+
+            enqueueScan(at: fileURL, reason: reason)
+        }
+    }
+
+    private func processScanQueueIfNeeded() {
+        guard !isProcessingScanQueue else {
+            return
+        }
+
+        isProcessingScanQueue = true
+
+        Task { @MainActor in
+            while !scanQueue.isEmpty {
+                let request = scanQueue.removeFirst()
+                queuedScanPaths.remove(request.url.path)
+                await scanQueuedFile(request)
+            }
+
+            isProcessingScanQueue = false
+        }
+    }
+
+    private func scanQueuedFile(_ request: WatchdogScanRequest) async {
+        let url = request.url
+
+        guard await waitForStableFile(at: url) else {
+            return
+        }
+
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return
+        }
+
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+            enqueueDirectoryContents(at: url, reason: request.reason)
+            return
+        }
+
+        guard !settingsManager.shouldIgnoreFileForScanning(url) else {
             return
         }
 
         let folderId: Int64 = 1
-        if let record = ScanResultsDatabase.shared.getRecord(url.path, folderId: folderId),
+        if request.reason == .added,
+           let record = ScanResultsDatabase.shared.getRecord(url.path, folderId: folderId),
            record.status == .clean,
            !ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId) {
             print("Skipping unchanged clean file: \(url.path)")
-            await MainActor.run {
-                filesSkipped += 1
-            }
+            filesSkipped += 1
             return
         }
-
-        // New file events must always scan. A copied file may preserve metadata
-        // that matches an old record, but it still needs a fresh verdict.
-        await MainActor.run {
-            filesScanned += 1
-        }
-
-        currentScanningFile = url.path
-        let result = await clamAVManager.scanFile(at: url.path)
-        currentScanningFile = nil
-        if result.status == .error {
-            await MainActor.run {
-                filesScanned -= 1
-            }
-        }
-        await recordWatchdogScanResult(result, showNotification: true, limitInitialModal: false)
-    }
-
-    private func handleModifiedFile(at url: URL) async {
-        print("File modified: \(url.path)")
 
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
         if result.status != .error {
-            await MainActor.run {
-                filesScanned += 1
-            }
+            filesScanned += 1
         }
-        await recordWatchdogScanResult(result, showNotification: true, limitInitialModal: false)
+        await recordWatchdogScanResult(
+            result,
+            showNotification: request.reason != .existing,
+            limitInitialModal: request.reason == .existing
+        )
+    }
+
+    private func waitForStableFile(at url: URL) async -> Bool {
+        var lastState = fileState(at: url)
+
+        for _ in 0..<8 {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+
+            guard let currentState = fileState(at: url) else {
+                return false
+            }
+
+            if let lastState, currentState == lastState {
+                return true
+            }
+
+            lastState = currentState
+        }
+
+        return true
+    }
+
+    private func fileState(at url: URL) -> WatchdogFileState? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return nil
+        }
+
+        return WatchdogFileState(
+            size: attrs[.size] as? UInt64 ?? 0,
+            modificationDate: attrs[.modificationDate] as? Date ?? .distantPast
+        )
     }
 
     private func recordWatchdogScanResult(
@@ -481,6 +565,22 @@ struct StatusIndicator: View {
                     .stroke(Color.white, lineWidth: 2)
             )
     }
+}
+
+private enum WatchdogScanReason {
+    case existing
+    case added
+    case modified
+}
+
+private struct WatchdogScanRequest {
+    let url: URL
+    let reason: WatchdogScanReason
+}
+
+private struct WatchdogFileState: Equatable {
+    let size: UInt64
+    let modificationDate: Date
 }
 
 #Preview {
