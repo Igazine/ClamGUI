@@ -21,7 +21,6 @@ struct WatchdogView: View {
     @State private var recordCount: Int = 0
     @State private var showingFoundThreats = false
     @State private var hasShownInitialModal = false  // Track if we've shown modal for initial scan threats
-    @State private var isWatcherRunning = false
     
     // Auto-start watching once a scanner backend is ready and a directory is set.
     @State private var shouldAutoStart = false
@@ -66,8 +65,9 @@ struct WatchdogView: View {
             }
             
             .onChange(of: clamAVManager.isScannerReady) { isReady in
-                if isReady {
-                    startWatchdogIfPossible(markAutoStarted: true)
+                if isReady && canActivateWatchdog && !shouldAutoStart {
+                    shouldAutoStart = true
+                    isWatching = true
                 } else if !isReady && isWatching {
                     isWatching = false
                 }
@@ -75,7 +75,10 @@ struct WatchdogView: View {
             
             // Ensure we check on appear too in case the scanner was ready before this view loaded.
             .onAppear {
-                startWatchdogIfPossible(markAutoStarted: true)
+                if clamAVManager.isScannerReady && canActivateWatchdog && !shouldAutoStart {
+                    shouldAutoStart = true
+                    isWatching = true
+                }
             }
             
             // Directory selection
@@ -113,7 +116,7 @@ struct WatchdogView: View {
 
             // Status
             HStack {
-                StatusIndicator(isActive: isWatcherRunning)
+                StatusIndicator(isActive: isWatching)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(statusText)
@@ -132,19 +135,11 @@ struct WatchdogView: View {
                     }
                     .font(.caption2)
                     .foregroundColor(.secondary)
-
-                    if isWatcherRunning {
-                        Text(directoryWatcher.lastStatusMessage)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
                 }
 
                 Spacer()
 
-                if isWatcherRunning {
+                if isWatching {
                     HStack(spacing: 5) {
                         if currentScanningFile != nil {
                             ProgressView()
@@ -167,11 +162,11 @@ struct WatchdogView: View {
             }
             .padding()
             .frame(maxWidth: .infinity)
-            .background(isWatcherRunning ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
+            .background(isWatching ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
             .cornerRadius(8)
 
             // Currently scanning file display
-            if isWatcherRunning, let currentFile = currentScanningFile {
+            if isWatching, let currentFile = currentScanningFile {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Currently Scanning")
                         .font(.caption)
@@ -202,25 +197,24 @@ struct WatchdogView: View {
         .padding()
         .onAppear {
             setupDirectoryWatcher()
-            startWatchdogIfPossible(markAutoStarted: true)
         }
         .onChange(of: isWatching) { newValue in
             if newValue {
-                startWatcher()
+                directoryWatcher.startWatching()
             } else {
-                stopWatcher()
+                directoryWatcher.stopWatching()
             }
         }
         .onChange(of: settingsManager.watchDirectory) { _ in
             let shouldResume = isWatching
             if isWatching {
                 isWatching = false
-                stopWatcher()
+                directoryWatcher.stopWatching()
             }
             resetWatchdogCounters()
             setupDirectoryWatcher()
             if shouldResume, canActivateWatchdog {
-                startWatchdogIfPossible(markAutoStarted: false)
+                isWatching = true
             }
         }
         .sheet(isPresented: $showingFoundThreats) {
@@ -236,16 +230,13 @@ struct WatchdogView: View {
     @State private var currentScanningFile: String?
 
     private var statusText: String {
-        if !isWatcherRunning {
+        if !isWatching {
             return "Watchdog inactive"
         }
         if currentScanningFile != nil {
             return "Scanning changed files..."
         }
-        if !settingsManager.autoScanOnFileAdded {
-            return "Watching, but auto-scan is disabled"
-        }
-        return "Watching for new files..."
+        return isWatching ? "Watching for new files..." : "Watchdog inactive"
     }
 
     private var watchdogDirectoryValidation: ScanPathValidator.DirectoryValidation {
@@ -317,34 +308,6 @@ struct WatchdogView: View {
         updateThreatsCount()
     }
 
-    private func startWatchdogIfPossible(markAutoStarted: Bool) {
-        guard canActivateWatchdog else { return }
-        if markAutoStarted {
-            guard !shouldAutoStart || !isWatcherRunning else { return }
-            shouldAutoStart = true
-        }
-        setupDirectoryWatcher()
-        if isWatching {
-            startWatcher()
-        } else {
-            isWatching = true
-            startWatcher()
-        }
-    }
-
-    private func startWatcher() {
-        setupDirectoryWatcher()
-        isWatcherRunning = directoryWatcher.startWatching()
-        if !isWatcherRunning {
-            isWatching = false
-        }
-    }
-
-    private func stopWatcher() {
-        directoryWatcher.stopWatching()
-        isWatcherRunning = false
-    }
-
     private func resetWatchdogCounters() {
         filesScanned = 0
         filesSkipped = 0
@@ -352,7 +315,6 @@ struct WatchdogView: View {
         recordCount = 0
         currentScanningFile = nil
         hasShownInitialModal = false
-        isWatcherRunning = false
         shouldAutoStart = false
     }
 
