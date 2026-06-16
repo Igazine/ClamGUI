@@ -341,7 +341,6 @@ struct WatchdogView: View {
                 }
 
                 if shouldIgnoreFile(fileURL) {
-                    filesSkippedCount += 1
                     continue
                 }
                 
@@ -398,9 +397,6 @@ struct WatchdogView: View {
         }
 
         guard !shouldIgnoreFile(url) else {
-            await MainActor.run {
-                filesSkipped += 1
-            }
             return
         }
 
@@ -442,9 +438,6 @@ struct WatchdogView: View {
 
     private func handleModifiedFile(at url: URL) async {
         guard !shouldIgnoreFile(url) else {
-            await MainActor.run {
-                filesSkipped += 1
-            }
             return
         }
 
