@@ -21,6 +21,7 @@ struct WatchdogView: View {
     @State private var recordCount: Int = 0
     @State private var showingFoundThreats = false
     @State private var hasShownInitialModal = false  // Track if we've shown modal for initial scan threats
+    @State private var isWatcherRunning = false
     
     // Auto-start watching once a scanner backend is ready and a directory is set.
     @State private var shouldAutoStart = false
@@ -65,7 +66,7 @@ struct WatchdogView: View {
             }
             
             .onChange(of: clamAVManager.isScannerReady) { isReady in
-                if isReady && !shouldAutoStart {
+                if isReady {
                     startWatchdogIfPossible(markAutoStarted: true)
                 } else if !isReady && isWatching {
                     isWatching = false
@@ -112,7 +113,7 @@ struct WatchdogView: View {
 
             // Status
             HStack {
-                StatusIndicator(isActive: isWatching)
+                StatusIndicator(isActive: isWatcherRunning)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(statusText)
@@ -135,7 +136,7 @@ struct WatchdogView: View {
 
                 Spacer()
 
-                if isWatching {
+                if isWatcherRunning {
                     HStack(spacing: 5) {
                         if currentScanningFile != nil {
                             ProgressView()
@@ -158,11 +159,11 @@ struct WatchdogView: View {
             }
             .padding()
             .frame(maxWidth: .infinity)
-            .background(isWatching ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
+            .background(isWatcherRunning ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
             .cornerRadius(8)
 
             // Currently scanning file display
-            if isWatching, let currentFile = currentScanningFile {
+            if isWatcherRunning, let currentFile = currentScanningFile {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Currently Scanning")
                         .font(.caption)
@@ -197,17 +198,16 @@ struct WatchdogView: View {
         }
         .onChange(of: isWatching) { newValue in
             if newValue {
-                setupDirectoryWatcher()
-                directoryWatcher.startWatching()
+                startWatcher()
             } else {
-                directoryWatcher.stopWatching()
+                stopWatcher()
             }
         }
         .onChange(of: settingsManager.watchDirectory) { _ in
             let shouldResume = isWatching
             if isWatching {
                 isWatching = false
-                directoryWatcher.stopWatching()
+                stopWatcher()
             }
             resetWatchdogCounters()
             setupDirectoryWatcher()
@@ -228,13 +228,13 @@ struct WatchdogView: View {
     @State private var currentScanningFile: String?
 
     private var statusText: String {
-        if !isWatching {
+        if !isWatcherRunning {
             return "Watchdog inactive"
         }
         if currentScanningFile != nil {
             return "Scanning changed files..."
         }
-        return isWatching ? "Watching for new files..." : "Watchdog inactive"
+        return "Watching for new files..."
     }
 
     private var watchdogDirectoryValidation: ScanPathValidator.DirectoryValidation {
@@ -309,15 +309,29 @@ struct WatchdogView: View {
     private func startWatchdogIfPossible(markAutoStarted: Bool) {
         guard canActivateWatchdog else { return }
         if markAutoStarted {
-            guard !shouldAutoStart else { return }
+            guard !shouldAutoStart || !isWatcherRunning else { return }
             shouldAutoStart = true
         }
         setupDirectoryWatcher()
         if isWatching {
-            directoryWatcher.startWatching()
+            startWatcher()
         } else {
             isWatching = true
+            startWatcher()
         }
+    }
+
+    private func startWatcher() {
+        setupDirectoryWatcher()
+        isWatcherRunning = directoryWatcher.startWatching()
+        if !isWatcherRunning {
+            isWatching = false
+        }
+    }
+
+    private func stopWatcher() {
+        directoryWatcher.stopWatching()
+        isWatcherRunning = false
     }
 
     private func resetWatchdogCounters() {
@@ -327,6 +341,7 @@ struct WatchdogView: View {
         recordCount = 0
         currentScanningFile = nil
         hasShownInitialModal = false
+        isWatcherRunning = false
         shouldAutoStart = false
     }
 

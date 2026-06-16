@@ -7,6 +7,7 @@
 
 import Foundation
 import AppKit
+import Darwin
 
 /// Monitors a directory for new files using file polling
 class DirectoryWatcher: ObservableObject {
@@ -25,6 +26,8 @@ class DirectoryWatcher: ObservableObject {
     // Polling timer
     private var timer: Timer?
     private let pollInterval: TimeInterval = 2.0
+    private var directoryEventSource: DispatchSourceFileSystemObject?
+    private var directoryFileDescriptor: CInt = -1
     
     // Track known files for change detection
     private var knownFiles: [String: FileState] = [:]
@@ -39,12 +42,14 @@ class DirectoryWatcher: ObservableObject {
         stopWatching()
     }
 
-    func startWatching() {
-        guard !watchDirectory.isEmpty, !isWatching else { return }
+    @discardableResult
+    func startWatching() -> Bool {
+        guard !watchDirectory.isEmpty else { return false }
+        guard !isWatching else { return true }
 
         guard let initialFiles = snapshotFiles() else {
             print("Cannot watch unavailable directory: \(watchDirectory)")
-            return
+            return false
         }
 
         knownFilesLock.lock()
@@ -52,25 +57,63 @@ class DirectoryWatcher: ObservableObject {
         knownFilesLock.unlock()
         
         isWatching = true
-        timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
+        let pollTimer = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
             self?.performPoll()
         }
+        RunLoop.main.add(pollTimer, forMode: .common)
+        timer = pollTimer
+        startDirectoryEventSource()
 
         Task { @MainActor in
             await onScanExistingFiles?()
         }
         
         print("Started watching: \(watchDirectory)")
+        return true
     }
 
     func stopWatching() {
         timer?.invalidate()
         timer = nil
+        directoryEventSource?.cancel()
+        directoryEventSource = nil
         isWatching = false
         knownFilesLock.lock()
         knownFiles.removeAll()
         knownFilesLock.unlock()
         print("Stopped watching")
+    }
+
+    private func startDirectoryEventSource() {
+        guard directoryEventSource == nil else { return }
+
+        let descriptor = open(watchDirectory, O_EVTONLY)
+        guard descriptor >= 0 else {
+            print("Could not open watched directory for filesystem events: \(watchDirectory)")
+            return
+        }
+
+        directoryFileDescriptor = descriptor
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: [.write, .extend, .attrib, .link, .rename, .delete],
+            queue: DispatchQueue.main
+        )
+
+        source.setEventHandler { [weak self] in
+            self?.performPoll()
+        }
+
+        source.setCancelHandler { [weak self] in
+            guard let self else { return }
+            if self.directoryFileDescriptor >= 0 {
+                close(self.directoryFileDescriptor)
+                self.directoryFileDescriptor = -1
+            }
+        }
+
+        directoryEventSource = source
+        source.resume()
     }
 
     private func performPoll() {
@@ -118,10 +161,15 @@ class DirectoryWatcher: ObservableObject {
                 continue
             }
 
-            guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path) else { continue }
+            let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+            let resourceValues = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
 
-            let modDate = attrs[.modificationDate] as? Date ?? Date.distantPast
-            let fileSize = attrs[.size] as? UInt64 ?? 0
+            let modDate = attrs?[.modificationDate] as? Date
+                ?? resourceValues?.contentModificationDate
+                ?? Date.distantPast
+            let fileSize = attrs?[.size] as? UInt64
+                ?? resourceValues?.fileSize.map(UInt64.init)
+                ?? 0
 
             files[fileURL.path] = FileState(modificationDate: modDate, size: fileSize)
         }
