@@ -114,28 +114,31 @@ struct WatchdogView: View {
                     }
                     .font(.caption2)
                     .foregroundColor(.secondary)
+
+                    Text(activityDetailText)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(height: 14, alignment: .leading)
                 }
 
                 Spacer()
 
                 if isWatching {
                     HStack(spacing: 5) {
-                        if currentScanningFile != nil {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                            Text("Scanning...")
-                                .foregroundColor(.blue)
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            Text("Idle")
-                                .foregroundColor(.green)
-                        }
+                        Image(systemName: activityStatusIcon)
+                            .foregroundColor(activityStatusColor)
+                            .frame(width: 12, height: 12)
+
+                        Text(activityStatusText)
+                            .foregroundColor(activityStatusColor)
+                            .frame(minWidth: 54, alignment: .leading)
                     }
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.blue.opacity(0.1))
+                    .background(activityStatusColor.opacity(0.1))
                     .cornerRadius(4)
                 }
             }
@@ -143,45 +146,6 @@ struct WatchdogView: View {
             .frame(maxWidth: .infinity)
             .background(isWatching ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
             .cornerRadius(8)
-
-            // Current activity display
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Current Activity")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                HStack(spacing: 8) {
-                    if let currentFile = currentScanningFile {
-                        Image(systemName: "doc.fill")
-                            .foregroundColor(.blue)
-
-                        Text(currentFile)
-                            .font(.caption)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-
-                        Spacer()
-
-                        ProgressView()
-                            .scaleEffect(0.7)
-                    } else {
-                        Image(systemName: isWatching ? "checkmark.circle.fill" : "pause.circle.fill")
-                            .foregroundColor(isWatching ? .green : .secondary)
-
-                        Text(isWatching ? "Idle" : "Watchdog inactive")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-
-                        Spacer()
-                    }
-                }
-                .padding()
-                .frame(minHeight: 44)
-                .background(currentScanningFile == nil ? Color.gray.opacity(0.06) : Color.blue.opacity(0.05))
-                .cornerRadius(6)
-            }
-            .padding(.horizontal)
         }
         .frame(maxWidth: 800)
         .padding()
@@ -238,6 +202,30 @@ struct WatchdogView: View {
             return "Scanning changed files..."
         }
         return isWatching ? "Watching for new files..." : "Watchdog inactive"
+    }
+
+    private var activityDetailText: String {
+        guard isWatching else {
+            return " "
+        }
+
+        guard let currentScanningFile else {
+            return " "
+        }
+
+        return "Scanning \(URL(fileURLWithPath: currentScanningFile).lastPathComponent)"
+    }
+
+    private var activityStatusText: String {
+        currentScanningFile == nil ? "Idle" : "Scanning"
+    }
+
+    private var activityStatusIcon: String {
+        currentScanningFile == nil ? "checkmark.circle.fill" : "magnifyingglass"
+    }
+
+    private var activityStatusColor: Color {
+        currentScanningFile == nil ? .green : .blue
     }
 
     // MARK: - Directory Selection
