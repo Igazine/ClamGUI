@@ -14,6 +14,7 @@ struct ScanView: View {
     @State private var selectedFileURL: URL?
     @State private var isDragging = false
     @State private var manualScanResult: ClamAVManager.ScanResult?
+    @State private var isManualScanning = false
     
     var body: some View {
         ScrollView {
@@ -34,25 +35,25 @@ struct ScanView: View {
                         )
                         .foregroundColor(
                             isDragging ? .accentColor :
-                            clamAVManager.isScanning ? .secondary.opacity(0.3) : .gray.opacity(0.5)
+                            isManualScanning ? .secondary.opacity(0.3) : .gray.opacity(0.5)
                         )
                         .background(
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(
                                     isDragging ? Color.accentColor.opacity(0.1) :
-                                    clamAVManager.isScanning ? Color.gray.opacity(0.02) : Color.gray.opacity(0.05)
+                                    isManualScanning ? Color.gray.opacity(0.02) : Color.gray.opacity(0.05)
                                 )
                         )
 
                     VStack(spacing: 15) {
                         Image(systemName: "arrow.down.doc.fill")
                             .font(.system(size: 50))
-                            .foregroundColor(clamAVManager.isScanning ? .secondary.opacity(0.3) : .accentColor)
+                            .foregroundColor(isManualScanning ? .secondary.opacity(0.3) : .accentColor)
 
-                        Text(clamAVManager.isScanning ? "Scan in progress..." : "Drag and drop a file here")
+                        Text(isManualScanning ? "Scan in progress..." : "Drag and drop a file here")
                             .font(.headline)
 
-                        if !clamAVManager.isScanning {
+                        if !isManualScanning {
                             Text("or")
                                 .foregroundColor(.secondary)
 
@@ -69,7 +70,7 @@ struct ScanView: View {
                     handleDrop(providers: providers)
                     return true
                 }
-                .disabled(clamAVManager.isScanning)
+                .disabled(isManualScanning)
 
                 // Selected file info
                 if let url = selectedFileURL {
@@ -80,7 +81,7 @@ struct ScanView: View {
 
                 // Scan button and progress
                 VStack(spacing: 15) {
-                    if clamAVManager.isScanning {
+                    if isManualScanning {
                         ProgressView()
                             .progressViewStyle(.linear)
                             .frame(maxWidth: .infinity)
@@ -102,18 +103,18 @@ struct ScanView: View {
                             }
                         }) {
                             HStack {
-                                if clamAVManager.isScanning {
+                                if isManualScanning {
                                     ProgressView()
                                         .scaleEffect(0.8)
                                 } else {
                                     Image(systemName: "play.fill")
                                 }
-                                Text(clamAVManager.isScanning ? "Scanning..." : "Scan File")
+                                Text(isManualScanning ? "Scanning..." : "Scan File")
                             }
                             .frame(minWidth: 150)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(selectedFileURL == nil || !clamAVManager.isScannerReady || clamAVManager.isScanning)
+                        .disabled(selectedFileURL == nil || !clamAVManager.isScannerReady || isManualScanning)
                     }
                 }
 
@@ -163,7 +164,10 @@ struct ScanView: View {
     }
     
     private func scanSelectedFile() async {
-        guard let url = selectedFileURL else { return }
+        guard let url = selectedFileURL, !isManualScanning else { return }
+
+        isManualScanning = true
+        defer { isManualScanning = false }
 
         let result = await clamAVManager.scanFile(at: url.path)
         manualScanResult = result
