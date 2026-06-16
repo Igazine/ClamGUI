@@ -29,9 +29,8 @@ struct ContentView: View {
 
                 WatchdogView(onThreatCountChanged: { watchdogThreatCount = $0 })
                     .tabItem {
-                        Label("Watchdog", systemImage: watchdogThreatCount > 0 ? "exclamationmark.shield.fill" : "eye")
+                        Label(watchdogTabTitle, systemImage: watchdogThreatCount > 0 ? "exclamationmark.shield.fill" : "eye")
                     }
-                    .badge(watchdogThreatCount)
                     .tag(1)
 
                 SettingsView()
@@ -67,6 +66,10 @@ struct ContentView: View {
     private func refreshWatchdogThreatCount() {
         let records = ScanResultsDatabase.shared.getInfectedFiles(folderId: 1)
         watchdogThreatCount = records.count
+    }
+
+    private var watchdogTabTitle: String {
+        watchdogThreatCount > 0 ? "Watchdog (\(watchdogThreatCount))" : "Watchdog"
     }
 }
 
