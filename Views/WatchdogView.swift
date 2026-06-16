@@ -443,6 +443,15 @@ struct WatchdogView: View {
         }
 
         let folderId: Int64 = 1
+        if request.reason == .existing,
+           let record = ScanResultsDatabase.shared.getRecord(url.path, folderId: folderId),
+           record.status != .error,
+           !ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId) {
+            print("Skipping unchanged existing file: \(url.path)")
+            filesSkipped += 1
+            return
+        }
+
         if request.reason == .added,
            let record = ScanResultsDatabase.shared.getRecord(url.path, folderId: folderId),
            record.status == .clean,
