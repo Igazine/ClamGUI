@@ -424,21 +424,17 @@ struct WatchdogView: View {
     private func scanQueuedFile(_ request: WatchdogScanRequest) async {
         let url = request.url
 
-        guard await waitForStableFile(at: url) else {
+        guard FileManager.default.fileExists(atPath: url.path) else {
             return
         }
 
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        guard !settingsManager.shouldIgnoreFileForScanning(url) else {
             return
         }
 
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
             enqueueDirectoryContents(at: url, reason: request.reason)
-            return
-        }
-
-        guard !settingsManager.shouldIgnoreFileForScanning(url) else {
             return
         }
 
@@ -461,6 +457,17 @@ struct WatchdogView: View {
             return
         }
 
+        if request.reason.requiresStabilityCheck,
+           !ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId) {
+            return
+        }
+
+        if request.reason.requiresStabilityCheck {
+            guard await waitForStableFile(at: url) else {
+                return
+            }
+        }
+
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
@@ -477,8 +484,8 @@ struct WatchdogView: View {
     private func waitForStableFile(at url: URL) async -> Bool {
         var lastState = fileState(at: url)
 
-        for _ in 0..<8 {
-            try? await Task.sleep(nanoseconds: 350_000_000)
+        for _ in 0..<4 {
+            try? await Task.sleep(nanoseconds: 150_000_000)
 
             guard let currentState = fileState(at: url) else {
                 return false
@@ -579,6 +586,15 @@ private enum WatchdogScanReason {
     case existing
     case added
     case modified
+
+    var requiresStabilityCheck: Bool {
+        switch self {
+        case .existing:
+            return false
+        case .added, .modified:
+            return true
+        }
+    }
 }
 
 private struct WatchdogScanRequest {
