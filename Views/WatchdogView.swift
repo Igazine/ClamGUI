@@ -144,14 +144,14 @@ struct WatchdogView: View {
             .background(isWatching ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
             .cornerRadius(8)
 
-            // Currently scanning file display
-            if isWatching, let currentFile = currentScanningFile {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Currently Scanning")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            // Current activity display
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Current Activity")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
 
-                    HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    if let currentFile = currentScanningFile {
                         Image(systemName: "doc.fill")
                             .foregroundColor(.blue)
 
@@ -164,13 +164,24 @@ struct WatchdogView: View {
 
                         ProgressView()
                             .scaleEffect(0.7)
+                    } else {
+                        Image(systemName: isWatching ? "checkmark.circle.fill" : "pause.circle.fill")
+                            .foregroundColor(isWatching ? .green : .secondary)
+
+                        Text(isWatching ? "Idle" : "Watchdog inactive")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+
+                        Spacer()
                     }
-                    .padding()
-                    .background(Color.blue.opacity(0.05))
-                    .cornerRadius(6)
                 }
-                .padding(.horizontal)
+                .padding()
+                .frame(minHeight: 44)
+                .background(currentScanningFile == nil ? Color.gray.opacity(0.06) : Color.blue.opacity(0.05))
+                .cornerRadius(6)
             }
+            .padding(.horizontal)
         }
         .frame(maxWidth: 800)
         .padding()
