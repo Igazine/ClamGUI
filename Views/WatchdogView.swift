@@ -65,9 +65,8 @@ struct WatchdogView: View {
             }
             
             .onChange(of: clamAVManager.isScannerReady) { isReady in
-                if isReady && canActivateWatchdog && !shouldAutoStart {
-                    shouldAutoStart = true
-                    isWatching = true
+                if isReady && !shouldAutoStart {
+                    startWatchdogIfPossible(markAutoStarted: true)
                 } else if !isReady && isWatching {
                     isWatching = false
                 }
@@ -75,10 +74,7 @@ struct WatchdogView: View {
             
             // Ensure we check on appear too in case the scanner was ready before this view loaded.
             .onAppear {
-                if clamAVManager.isScannerReady && canActivateWatchdog && !shouldAutoStart {
-                    shouldAutoStart = true
-                    isWatching = true
-                }
+                startWatchdogIfPossible(markAutoStarted: true)
             }
             
             // Directory selection
@@ -197,9 +193,11 @@ struct WatchdogView: View {
         .padding()
         .onAppear {
             setupDirectoryWatcher()
+            startWatchdogIfPossible(markAutoStarted: true)
         }
         .onChange(of: isWatching) { newValue in
             if newValue {
+                setupDirectoryWatcher()
                 directoryWatcher.startWatching()
             } else {
                 directoryWatcher.stopWatching()
@@ -214,7 +212,7 @@ struct WatchdogView: View {
             resetWatchdogCounters()
             setupDirectoryWatcher()
             if shouldResume, canActivateWatchdog {
-                isWatching = true
+                startWatchdogIfPossible(markAutoStarted: false)
             }
         }
         .sheet(isPresented: $showingFoundThreats) {
@@ -306,6 +304,20 @@ struct WatchdogView: View {
         }
 
         updateThreatsCount()
+    }
+
+    private func startWatchdogIfPossible(markAutoStarted: Bool) {
+        guard canActivateWatchdog else { return }
+        if markAutoStarted {
+            guard !shouldAutoStart else { return }
+            shouldAutoStart = true
+        }
+        setupDirectoryWatcher()
+        if isWatching {
+            directoryWatcher.startWatching()
+        } else {
+            isWatching = true
+        }
     }
 
     private func resetWatchdogCounters() {
