@@ -11,6 +11,7 @@ struct ContentView: View {
     @EnvironmentObject var clamAVManager: ClamAVManager
     @State private var selectedTab = 0
     @State private var isCheckingStatus = true
+    @State private var watchdogThreatCount = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,10 +27,11 @@ struct ContentView: View {
                     }
                     .tag(0)
 
-                WatchdogView()
+                WatchdogView(onThreatCountChanged: { watchdogThreatCount = $0 })
                     .tabItem {
-                        Label("Watchdog", systemImage: "eye")
+                        Label("Watchdog", systemImage: watchdogThreatCount > 0 ? "exclamationmark.shield.fill" : "eye")
                     }
+                    .badge(watchdogThreatCount)
                     .tag(1)
 
                 SettingsView()
@@ -51,6 +53,7 @@ struct ContentView: View {
             Task {
                 await checkStatus()
             }
+            refreshWatchdogThreatCount()
         }
     }
     
@@ -59,6 +62,11 @@ struct ContentView: View {
         await clamAVManager.checkClamAVInstallation()
         isCheckingStatus = false
         await clamAVManager.checkVirusDefinitions()
+    }
+
+    private func refreshWatchdogThreatCount() {
+        let records = ScanResultsDatabase.shared.getInfectedFiles(folderId: 1)
+        watchdogThreatCount = records.count
     }
 }
 

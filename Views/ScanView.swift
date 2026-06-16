@@ -13,6 +13,7 @@ struct ScanView: View {
     @EnvironmentObject var settingsManager: SettingsManager
     @State private var selectedFileURL: URL?
     @State private var isDragging = false
+    @State private var manualScanResult: ClamAVManager.ScanResult?
     
     var body: some View {
         ScrollView {
@@ -117,7 +118,7 @@ struct ScanView: View {
                 }
 
                 // Scan result
-                if let result = clamAVManager.lastScanResult {
+                if let result = manualScanResult {
                     ScanResultCard(result: result)
                 }
             }
@@ -142,7 +143,7 @@ struct ScanView: View {
         if response == .OK {
             selectedFileURL = panel.url
             // Clear previous scan result when new file is selected
-            clamAVManager.lastScanResult = nil
+            manualScanResult = nil
         }
     }
     
@@ -155,7 +156,7 @@ struct ScanView: View {
                 Task { @MainActor in
                     selectedFileURL = url
                     // Clear previous scan result when new file is selected
-                    clamAVManager.lastScanResult = nil
+                    manualScanResult = nil
                 }
             }
         }
@@ -171,6 +172,7 @@ struct ScanView: View {
         }
 
         let result = await clamAVManager.scanFile(at: url.path)
+        manualScanResult = result
 
         // Record in database ONLY if scan was successful (not an error)
         if result.status != .error {

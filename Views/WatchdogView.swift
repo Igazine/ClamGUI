@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 struct WatchdogView: View {
     @EnvironmentObject var settingsManager: SettingsManager
     @EnvironmentObject var clamAVManager: ClamAVManager
+    let onThreatCountChanged: ((Int) -> Void)?
     @StateObject private var directoryWatcher = DirectoryWatcher()
     @StateObject private var threatHandler = ThreatActionHandler.shared
     @State private var isWatching = false
@@ -23,6 +24,10 @@ struct WatchdogView: View {
     
     // Auto-start watching once a scanner backend is ready and a directory is set.
     @State private var shouldAutoStart = false
+
+    init(onThreatCountChanged: ((Int) -> Void)? = nil) {
+        self.onThreatCountChanged = onThreatCountChanged
+    }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -300,6 +305,7 @@ struct WatchdogView: View {
             await MainActor.run {
                 threatsCount = threats.count
                 recordCount = records
+                onThreatCountChanged?(threats.count)
             }
         }
     }
