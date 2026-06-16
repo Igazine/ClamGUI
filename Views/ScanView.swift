@@ -165,12 +165,6 @@ struct ScanView: View {
     private func scanSelectedFile() async {
         guard let url = selectedFileURL else { return }
 
-        // Validate path before scanning
-        if !ScanPathValidator.isPathAllowed(url.path) {
-            showPathRestrictionAlert(for: url.path)
-            return
-        }
-
         let result = await clamAVManager.scanFile(at: url.path)
         manualScanResult = result
 
@@ -217,6 +211,14 @@ struct ScanView: View {
     }
 
     private func quarantineInfectedFile(at url: URL, threatName: String) async {
+        let capability = ScanPathValidator.actionCapability(
+            forFileAt: url.path,
+            quarantineDirectory: settingsManager.quarantinePath
+        )
+        guard capability.canQuarantine else {
+            return
+        }
+
         let success = await QuarantineManager.shared.quarantineFile(at: url.path, threatName: threatName)
 
         if success && settingsManager.showNotifications {
@@ -227,14 +229,6 @@ struct ScanView: View {
         }
     }
 
-    private func showPathRestrictionAlert(for path: String) {
-        let alert = NSAlert()
-        alert.messageText = "Scanning Restricted"
-        alert.informativeText = ScanPathValidator.getRestrictionReason(for: path) ?? "This location cannot be scanned for security reasons."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
 }
 
 // MARK: - Subviews
@@ -299,6 +293,13 @@ struct ScanResultCard: View {
     let result: ClamAVManager.ScanResult
     @EnvironmentObject var settingsManager: SettingsManager
 
+    private var actionCapability: ScanPathValidator.FileActionCapability {
+        ScanPathValidator.actionCapability(
+            forFileAt: result.filePath,
+            quarantineDirectory: settingsManager.quarantinePath
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 15) {
@@ -334,7 +335,7 @@ struct ScanResultCard: View {
                         .fontWeight(.medium)
                         .foregroundColor(.secondary)
 
-                    if settingsManager.quarantineEnabled {
+                    if settingsManager.quarantineEnabled && actionCapability.canQuarantine {
                         Button("Quarantine") {
                             quarantineFile()
                         }
@@ -347,6 +348,12 @@ struct ScanResultCard: View {
                     }
                     .buttonStyle(.bordered)
                     .font(.caption)
+                }
+
+                if let reason = actionCapability.reason {
+                    Label(reason, systemImage: "lock")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
         }

@@ -49,24 +49,40 @@ class ThreatActionHandler: ObservableObject {
         print("   rememberedAction=\(rememberedAction?.rawValue ?? "nil")")
         print("   threatAutoAction=\(SettingsManager.shared.threatAutoAction)")
         print("   threatAutoActionValue=\(SettingsManager.shared.threatAutoActionValue)")
+        let capability = ScanPathValidator.actionCapability(
+            forFileAt: filePath,
+            quarantineDirectory: SettingsManager.shared.quarantinePath
+        )
         
         // Check if we have an auto-action set
         if let action = rememberedAction {
+            guard action.isAllowed(by: capability) else {
+                showModal(filePath: filePath, threatName: threatName, capability: capability)
+                return
+            }
             print("   → Executing remembered action: \(action)")
-            await executeAction(action, filePath: filePath, threatName: threatName)
+            await executeAction(action, filePath: filePath, threatName: threatName, capability: capability)
             return
         }
 
         // Check if settings has auto-action configured
         if SettingsManager.shared.threatAutoAction {
+            guard SettingsManager.shared.threatAutoActionValue.isAllowed(by: capability) else {
+                showModal(filePath: filePath, threatName: threatName, capability: capability)
+                return
+            }
             print("   → Executing settings auto-action: \(SettingsManager.shared.threatAutoActionValue)")
-            await executeAction(SettingsManager.shared.threatAutoActionValue, filePath: filePath, threatName: threatName)
+            await executeAction(SettingsManager.shared.threatAutoActionValue, filePath: filePath, threatName: threatName, capability: capability)
             return
         }
 
         // Show modal and let the user choose how to handle the threat.
+        showModal(filePath: filePath, threatName: threatName, capability: capability)
+    }
+
+    private func showModal(filePath: String, threatName: String, capability: ScanPathValidator.FileActionCapability) {
         print("   → Showing threat action modal")
-        currentThreat = ThreatInfo(filePath: filePath, threatName: threatName)
+        currentThreat = ThreatInfo(filePath: filePath, threatName: threatName, actionCapability: capability)
         showingThreatModal = true
         print("   → showingThreatModal=\(showingThreatModal)")
         rememberChoice = false
@@ -75,6 +91,7 @@ class ThreatActionHandler: ObservableObject {
     /// User selected an action in the modal
     func userSelectedAction(_ action: ThreatAction) async {
         guard let threat = currentThreat else { return }
+        guard action.isAllowed(by: threat.actionCapability) else { return }
         
         // Save choice if requested
         if rememberChoice {
@@ -83,7 +100,7 @@ class ThreatActionHandler: ObservableObject {
         }
         
         // Execute the action
-        await executeAction(action, filePath: threat.filePath, threatName: threat.threatName)
+        await executeAction(action, filePath: threat.filePath, threatName: threat.threatName, capability: threat.actionCapability)
         
         // Close modal
         showingThreatModal = false
@@ -91,9 +108,14 @@ class ThreatActionHandler: ObservableObject {
     }
     
     /// Execute a threat action
-    private func executeAction(_ action: ThreatAction, filePath: String, threatName: String) async {
+    private func executeAction(
+        _ action: ThreatAction,
+        filePath: String,
+        threatName: String,
+        capability: ScanPathValidator.FileActionCapability
+    ) async {
         // Clear executable bit if setting is enabled
-        if SettingsManager.shared.clearExecutableBit {
+        if SettingsManager.shared.clearExecutableBit && capability.canDelete {
             await clearExecutableBit(for: filePath)
         }
         
@@ -148,6 +170,7 @@ struct ThreatInfo: Identifiable {
     let id = UUID()
     let filePath: String
     let threatName: String
+    let actionCapability: ScanPathValidator.FileActionCapability
     let detectedAt = Date()
     
     var fileName: String {
@@ -156,5 +179,16 @@ struct ThreatInfo: Identifiable {
     
     var folderPath: String {
         URL(fileURLWithPath: filePath).deletingLastPathComponent().path
+    }
+}
+
+private extension ThreatAction {
+    func isAllowed(by capability: ScanPathValidator.FileActionCapability) -> Bool {
+        switch self {
+        case .quarantine:
+            return capability.canQuarantine
+        case .doNothing:
+            return true
+        }
     }
 }

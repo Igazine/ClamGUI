@@ -123,6 +123,7 @@ struct ThreatRecord: Identifiable {
 
 /// Individual threat card
 struct ThreatCard: View {
+    @EnvironmentObject var settingsManager: SettingsManager
     let threat: ThreatRecord
     let onActionCompleted: () -> Void
     let onDeleteRecord: (Int64) -> Void
@@ -134,118 +135,25 @@ struct ThreatCard: View {
     @State private var showingRemoveRecordConfirm = false
     @State private var showingDeleteFileConfirm = false
 
+    private var actionCapability: ScanPathValidator.FileActionCapability {
+        ScanPathValidator.actionCapability(
+            forFileAt: threat.filePath,
+            quarantineDirectory: settingsManager.quarantinePath
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Threat info
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.title2)
-                    .foregroundColor(.red)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(threat.fileName)
-                        .font(.headline)
-                        .lineLimit(1)
-
-                    Text(threat.threatName)
-                        .font(.caption)
-                        .foregroundColor(.red)
-
-                    Text(threat.filePath)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Text(threat.detectedAt.formatted(.relative(presentation: .named)))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+            threatHeader
 
             Divider()
 
-            HStack(spacing: 8) {
-                if isQuarantining {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Quarantining...")
-                            .font(.caption)
-                        ProgressView(value: quarantineProgress)
-                            .progressViewStyle(.linear)
-                    }
-                    .frame(width: 150, alignment: .leading)
-                } else {
-                    Button(action: quarantineFile) {
-                        Label("Quarantine", systemImage: "lock.shield")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
-                    .disabled(isQuarantining)
-                }
+            actionRow
 
-                Button(action: openInFinder) {
-                    Label("Show in Finder", systemImage: "folder")
-                }
-                .disabled(isQuarantining)
-
-                Button(action: removeThreatRecord) {
-                    Label("Remove from List", systemImage: "xmark.circle")
-                }
-                .buttonStyle(.bordered)
-                .tint(.gray.opacity(0.5))
-                .disabled(isQuarantining)
-                .help("Remove this detection from Found Threats without changing the file")
-
-                Button(role: .destructive, action: confirmDeleteFile) {
-                    Label("Delete File", systemImage: "trash")
-                }
-                .buttonStyle(.bordered)
-                .tint(.red)
-                .disabled(isQuarantining)
-                .help("Permanently delete the file from disk")
-
-                Spacer()
-            }
-            .font(.caption)
-            .alert("Network Drive Detected", isPresented: $showingNetworkWarning) {
-                Button("Delete File Instead", role: .destructive) {
-                    Task { await deleteFileFromDisk() }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This file is located on a network drive and cannot be quarantined. You can either delete it permanently or leave it in place.")
-            }
-            .alert("Cross-Volume Quarantine", isPresented: $showingCrossVolumeWarning) {
-                Button("Proceed with Quarantine") {
-                    Task { await performQuarantine() }
-                }
-                Button("Delete File Instead", role: .destructive) {
-                    Task { await deleteFileFromDisk() }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                if let size = getFileSize(at: URL(fileURLWithPath: threat.filePath)) {
-                    Text("This file is on a different drive than your quarantine folder. Quarantining will temporarily use an additional **\(formatFileSize(size))** on your system drive during the copy process.")
-                } else {
-                    Text("This file is on a different drive than your quarantine folder.")
-                }
-            }
-            .alert("Remove from List", isPresented: $showingRemoveRecordConfirm) {
-                Button("Remove") {
-                    Task { await removeRecordOnly() }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This removes the detection from ClamGUI's Found Threats list. The file will not be changed.")
-            }
-            .alert("Delete File", isPresented: $showingDeleteFileConfirm) {
-                Button("Delete File", role: .destructive) {
-                    Task { await deleteFileFromDisk() }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This permanently deletes the file from disk and removes it from Found Threats.")
+            if let reason = actionCapability.reason {
+                Label(reason, systemImage: "lock")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .padding()
@@ -255,6 +163,141 @@ struct ThreatCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.red.opacity(0.2), lineWidth: 1)
         )
+        .alert("Network Drive Detected", isPresented: $showingNetworkWarning) {
+            networkDriveAlertButtons
+        } message: {
+            Text("This file is located on a network drive and cannot be quarantined. You can either delete it permanently or leave it in place.")
+        }
+        .alert("Cross-Volume Quarantine", isPresented: $showingCrossVolumeWarning) {
+            crossVolumeAlertButtons
+        } message: {
+            crossVolumeAlertMessage
+        }
+        .alert("Remove from List", isPresented: $showingRemoveRecordConfirm) {
+            Button("Remove") {
+                Task { await removeRecordOnly() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the detection from ClamGUI's Found Threats list. The file will not be changed.")
+        }
+        .alert("Delete File", isPresented: $showingDeleteFileConfirm) {
+            Button("Delete File", role: .destructive) {
+                Task { await deleteFileFromDisk() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes the file from disk and removes it from Found Threats.")
+        }
+    }
+
+    private var threatHeader: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.title2)
+                .foregroundColor(.red)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(threat.fileName)
+                    .font(.headline)
+                    .lineLimit(1)
+
+                Text(threat.threatName)
+                    .font(.caption)
+                    .foregroundColor(.red)
+
+                Text(threat.filePath)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text(threat.detectedAt.formatted(.relative(presentation: .named)))
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 8) {
+            quarantineControl
+
+            Button(action: openInFinder) {
+                Label("Show in Finder", systemImage: "folder")
+            }
+            .disabled(isQuarantining)
+
+            Button(action: removeThreatRecord) {
+                Label("Remove from List", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.bordered)
+            .tint(.gray.opacity(0.5))
+            .disabled(isQuarantining)
+            .help("Remove this detection from Found Threats without changing the file")
+
+            Button(role: .destructive, action: confirmDeleteFile) {
+                Label("Delete File", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+            .disabled(isQuarantining || !actionCapability.canDelete)
+            .help("Permanently delete the file from disk")
+
+            Spacer()
+        }
+        .font(.caption)
+    }
+
+    @ViewBuilder
+    private var quarantineControl: some View {
+        if isQuarantining {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Quarantining...")
+                    .font(.caption)
+                ProgressView(value: quarantineProgress)
+                    .progressViewStyle(.linear)
+            }
+            .frame(width: 150, alignment: .leading)
+        } else if actionCapability.canQuarantine {
+            Button(action: quarantineFile) {
+                Label("Quarantine", systemImage: "lock.shield")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.orange)
+            .disabled(isQuarantining)
+        }
+    }
+
+    @ViewBuilder
+    private var networkDriveAlertButtons: some View {
+        if actionCapability.canDelete {
+            Button("Delete File Instead", role: .destructive) {
+                Task { await deleteFileFromDisk() }
+            }
+        }
+        Button("Cancel", role: .cancel) {}
+    }
+
+    @ViewBuilder
+    private var crossVolumeAlertButtons: some View {
+        Button("Proceed with Quarantine") {
+            Task { await performQuarantine() }
+        }
+        if actionCapability.canDelete {
+            Button("Delete File Instead", role: .destructive) {
+                Task { await deleteFileFromDisk() }
+            }
+        }
+        Button("Cancel", role: .cancel) {}
+    }
+
+    private var crossVolumeAlertMessage: Text {
+        if let size = getFileSize(at: URL(fileURLWithPath: threat.filePath)) {
+            return Text("This file is on a different drive than your quarantine folder. Quarantining will temporarily use an additional **\(formatFileSize(size))** on your system drive during the copy process.")
+        }
+        return Text("This file is on a different drive than your quarantine folder.")
     }
 
     private func removeThreatRecord() {
@@ -262,11 +305,13 @@ struct ThreatCard: View {
     }
 
     private func confirmDeleteFile() {
+        guard actionCapability.canDelete else { return }
         showingDeleteFileConfirm = true
     }
 
     private func quarantineFile() {
         Task {
+            guard actionCapability.canQuarantine else { return }
             if !QuarantineManager.shared.canQuarantineFile(at: threat.filePath) {
                 showingNetworkWarning = true
                 return

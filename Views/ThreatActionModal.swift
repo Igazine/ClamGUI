@@ -63,6 +63,12 @@ struct ThreatActionModal: View {
                             .truncationMode(.middle)
                             .foregroundColor(.secondary)
                     }
+
+                    if let reason = threat.actionCapability.reason {
+                        Label(reason, systemImage: "lock")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .padding()
                 .background(Color.red.opacity(0.05))
@@ -77,20 +83,22 @@ struct ThreatActionModal: View {
 
             // Action buttons
             VStack(spacing: 10) {
-                Button(action: {
-                    Task {
-                        await handler.userSelectedAction(.quarantine)
+                if handler.currentThreat?.actionCapability.canQuarantine == true {
+                    Button(action: {
+                        Task {
+                            await handler.userSelectedAction(.quarantine)
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "lock.shield")
+                            Text("Quarantine File")
+                        }
+                        .frame(maxWidth: .infinity)
                     }
-                }) {
-                    HStack {
-                        Image(systemName: "lock.shield")
-                        Text("Quarantine File")
-                    }
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .help("Move file to quarantine folder")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
-                .help("Move file to quarantine folder")
 
                 Button(action: {
                     Task {
