@@ -46,6 +46,7 @@ class ScanResultsDatabase: @unchecked Sendable {
     private var db: OpaquePointer?
     private let dbPath: String
     private let dbQueue = DispatchQueue(label: "com.clamgui.db")
+    private let dbLock = NSLock()
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     
     private init() {
@@ -137,6 +138,9 @@ class ScanResultsDatabase: @unchecked Sendable {
     
     /// Get all infected files for a folder
     func getInfectedFiles(folderId: Int64) -> [ScanResultRecord] {
+        dbLock.lock()
+        defer { dbLock.unlock() }
+
         let sql = """
         SELECT id, path, folder_id, status, threat_name, scan_timestamp, file_size, modification_date
         FROM scan_results
@@ -181,6 +185,9 @@ class ScanResultsDatabase: @unchecked Sendable {
     
     /// Get total record count for a folder
     func getRecordCount(folderId: Int64) -> Int {
+        dbLock.lock()
+        defer { dbLock.unlock() }
+
         let sql = "SELECT COUNT(*) FROM scan_results WHERE folder_id = ?"
         var statement: OpaquePointer?
         
@@ -200,6 +207,13 @@ class ScanResultsDatabase: @unchecked Sendable {
     
     /// Remove a record (user deleted file)
     func removeRecord(path: String, folderId: Int64) async {
+        removeRecordSync(path: path, folderId: folderId)
+    }
+
+    private func removeRecordSync(path: String, folderId: Int64) {
+        dbLock.lock()
+        defer { dbLock.unlock() }
+
         let sql = "DELETE FROM scan_results WHERE folder_id = ? AND path = ?"
         var statement: OpaquePointer?
         
@@ -225,6 +239,13 @@ class ScanResultsDatabase: @unchecked Sendable {
     
     /// Clear all records (for testing)
     func clearAll() async {
+        clearAllSync()
+    }
+
+    private func clearAllSync() {
+        dbLock.lock()
+        defer { dbLock.unlock() }
+
         sqlite3_exec(db, "DELETE FROM scan_results", nil, nil, nil)
     }
     
@@ -233,6 +254,9 @@ class ScanResultsDatabase: @unchecked Sendable {
     private func recordScanSync(path: String, folderId: Int64, status: ScanStatus,
                                threatName: String?, scanTimestamp: Int64,
                                fileSize: Int64, modificationDate: Int64) {
+        dbLock.lock()
+        defer { dbLock.unlock() }
+
         print("💾 recordScanSync: path=\(path), folderId=\(folderId), status=\(status.rawValue)")
         
         let sql = """
@@ -282,6 +306,9 @@ class ScanResultsDatabase: @unchecked Sendable {
     }
     
     func getRecord(_ path: String, folderId: Int64) -> ScanResultRecord? {
+        dbLock.lock()
+        defer { dbLock.unlock() }
+
         let sql = """
         SELECT id, path, folder_id, status, threat_name, scan_timestamp, file_size, modification_date
         FROM scan_results

@@ -205,7 +205,7 @@ struct WatchdogView: View {
             }
         }
         .sheet(isPresented: $showingFoundThreats) {
-            FoundThreatsSheet()
+            FoundThreatsSheet(onThreatsChanged: updateThreatsCount)
         }
         .sheet(isPresented: $threatHandler.showingThreatModal) {
             ThreatActionModal()
@@ -371,6 +371,17 @@ struct WatchdogView: View {
             return
         }
 
+        let folderId: Int64 = 1
+        if let record = ScanResultsDatabase.shared.getRecord(url.path, folderId: folderId),
+           record.status == .clean,
+           !ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId) {
+            print("Skipping unchanged clean file: \(url.path)")
+            await MainActor.run {
+                filesSkipped += 1
+            }
+            return
+        }
+
         // New file events must always scan. A copied file may preserve metadata
         // that matches an old record, but it still needs a fresh verdict.
         await MainActor.run {
@@ -451,11 +462,7 @@ struct WatchdogView: View {
     }
 
     private func handleDeletedFile(at url: URL) async {
-        let folderId: Int64 = 1
         print("File deleted: \(url.path)")
-        
-        // Keep infected records visible until the user clears them.
-        await ScanResultsDatabase.shared.removeNonThreatRecord(path: url.path, folderId: folderId)
         updateThreatsCount()
     }
 }
