@@ -117,11 +117,6 @@ struct ScanView: View {
                         .disabled(selectedFileURL == nil || !clamAVManager.isScannerReady || isManualScanning)
                     }
                 }
-
-                // Scan result
-                if let result = manualScanResult, result.status != .error {
-                    ScanResultCard(result: result)
-                }
             }
             .padding()
             .frame(maxWidth: 700)
@@ -298,44 +293,11 @@ struct ScanFileStatusCard: View {
     let result: ClamAVManager.ScanResult?
 
     var body: some View {
-        if let result, result.status == .error {
-            ScanErrorCard(result: result)
+        if let result {
+            ScanResultCard(result: result)
         } else {
             FileInfoCard(url: url)
         }
-    }
-}
-
-struct ScanErrorCard: View {
-    let result: ClamAVManager.ScanResult
-
-    var body: some View {
-        HStack(spacing: 15) {
-            Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 30))
-                .foregroundColor(.orange)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Scan Error")
-                    .font(.headline)
-                    .foregroundColor(.orange)
-
-                Text(result.threatName ?? "The file could not be scanned.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text(result.filePath)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(8)
     }
 }
 
