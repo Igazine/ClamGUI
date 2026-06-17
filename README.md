@@ -121,7 +121,7 @@ To verify an already packaged app bundle:
 Scripts/verify-clamav-runtime.sh /path/to/ClamGUI.app
 ```
 
-To produce a local Release app bundle and DMG with the bundled ClamAV runtime:
+To produce a local Release app bundle and PKG installer with the bundled ClamAV runtime:
 
 ```bash
 Scripts/package-release-app.sh /opt/homebrew
