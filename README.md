@@ -121,11 +121,26 @@ To verify an already packaged app bundle:
 Scripts/verify-clamav-runtime.sh /path/to/ClamGUI.app
 ```
 
+To produce a local Release app bundle and DMG with the bundled ClamAV runtime:
+
+```bash
+Scripts/package-release-app.sh /opt/homebrew
+```
+
+This writes artifacts under `build/Artifacts/`. The current release package is
+ad-hoc signed for local validation and is not notarized yet.
+
 To run an end-to-end native scanner smoke test against a clean file and the
 EICAR antivirus test string:
 
 ```bash
 Scripts/smoke-test-native-scanner.sh
+```
+
+You can also point the same smoke test at an already packaged app:
+
+```bash
+Scripts/smoke-test-native-scanner.sh build/Artifacts/Release/ClamGUI.app
 ```
 
 ## Project Structure

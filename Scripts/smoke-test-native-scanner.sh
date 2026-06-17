@@ -3,16 +3,30 @@ set -eo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 derived_data="${CLAMGUI_DERIVED_DATA:-/private/tmp/clamgui-derived}"
-app_bundle="$derived_data/Build/Products/Debug/ClamGUI.app"
-app_executable="$app_bundle/Contents/MacOS/ClamGUI"
 smoke_home="$(mktemp -d "${TMPDIR:-/tmp}/clamgui-smoke-home.XXXXXX")"
+
+usage() {
+  echo "Usage: $0 [path-to-ClamGUI.app]" >&2
+}
+
+if [[ $# -gt 1 ]]; then
+  usage
+  exit 64
+fi
 
 cleanup() {
   rm -rf "$smoke_home"
 }
 trap cleanup EXIT
 
-"$project_root/Scripts/build-debug-with-clamav-runtime.sh"
+if [[ $# -eq 1 ]]; then
+  app_bundle="$1"
+else
+  "$project_root/Scripts/build-debug-with-clamav-runtime.sh"
+  app_bundle="$derived_data/Build/Products/Debug/ClamGUI.app"
+fi
+
+app_executable="$app_bundle/Contents/MacOS/ClamGUI"
 
 if [[ ! -x "$app_executable" ]]; then
   echo "error: app executable not found: $app_executable" >&2

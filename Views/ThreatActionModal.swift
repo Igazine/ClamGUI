@@ -175,6 +175,8 @@ struct FoundThreatsSheet: View {
     }
 }
 
+#if DEBUG
 #Preview {
     ThreatActionModal()
 }
+#endif

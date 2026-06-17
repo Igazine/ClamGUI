@@ -544,9 +544,11 @@ private struct IgnoredExtensionToken: View {
     }
 }
 
+#if DEBUG
 #Preview {
     SettingsView()
         .environmentObject(ClamAVManager.shared)
         .environmentObject(SettingsManager.shared)
         .environmentObject(UpdaterManager.shared)
 }
+#endif

@@ -367,6 +367,8 @@ struct ThreatCard: View {
     }
 }
 
+#if DEBUG
 #Preview {
     FoundThreatsView()
 }
+#endif

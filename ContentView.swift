@@ -161,8 +161,10 @@ struct ScannerStatusBanner: View {
     }
 }
 
+#if DEBUG
 #Preview {
     ContentView()
         .environmentObject(ClamAVManager.shared)
         .environmentObject(SettingsManager.shared)
 }
+#endif

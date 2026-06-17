@@ -147,6 +147,8 @@ struct LinkButton: View {
     }
 }
 
+#if DEBUG
 #Preview {
     AboutView()
 }
+#endif

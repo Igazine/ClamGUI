@@ -453,8 +453,10 @@ struct ScanResultCard: View {
     }
 }
 
+#if DEBUG
 #Preview {
     ScanView()
         .environmentObject(ClamAVManager.shared)
         .environmentObject(SettingsManager.shared)
 }
+#endif

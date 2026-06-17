@@ -995,8 +995,10 @@ private extension ClamAVManager.ScanResult.ScanStatus {
     }
 }
 
+#if DEBUG
 #Preview {
     WatchdogView()
         .environmentObject(ClamAVManager.shared)
         .environmentObject(SettingsManager.shared)
 }
+#endif
