@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 struct WatchdogView: View {
     @EnvironmentObject var settingsManager: SettingsManager
@@ -30,6 +31,8 @@ struct WatchdogView: View {
     @State private var isProcessingScanQueue = false
     @State private var isStartupScanActive = false
     @State private var startupSummary: String = ""
+    @State private var diagnosticEvents: [WatchdogDiagnosticEvent] = []
+    @State private var showingDiagnostics = false
     
     // Auto-start watching once a scanner backend is ready and a directory is set.
     @State private var shouldAutoStart = false
@@ -66,6 +69,11 @@ struct WatchdogView: View {
                     }
                 }
                 .help("View detected threats")
+
+                Button(action: { showingDiagnostics = true }) {
+                    Label("Diagnostics", systemImage: "list.bullet.rectangle")
+                }
+                .help("View WatchDog diagnostic events")
 
                 // Watch toggle
                 Toggle("Active", isOn: $isWatching)
@@ -166,6 +174,7 @@ struct WatchdogView: View {
             if isReady {
                 autoStartWatchdogIfPossible()
             } else if isWatching {
+                recordDiagnostic("Scanner became unavailable, stopping WatchDog", category: .state)
                 isWatching = false
                 directoryWatcher.stopWatching()
             }
@@ -173,8 +182,10 @@ struct WatchdogView: View {
         .onChange(of: isWatching) { newValue in
             if newValue {
                 setupDirectoryWatcher()
+                recordDiagnostic("Starting WatchDog", category: .state, path: settingsManager.watchDirectory)
                 directoryWatcher.startWatching()
             } else {
+                recordDiagnostic("Stopping WatchDog", category: .state, path: settingsManager.watchDirectory)
                 directoryWatcher.stopWatching()
             }
         }
@@ -184,6 +195,7 @@ struct WatchdogView: View {
                 isWatching = false
                 directoryWatcher.stopWatching()
             }
+            recordDiagnostic("Watched directory changed", category: .state, path: settingsManager.watchDirectory)
             resetWatchdogCounters()
             setupDirectoryWatcher()
             if shouldResume, !settingsManager.watchDirectory.isEmpty, clamAVManager.isScannerReady {
@@ -196,6 +208,14 @@ struct WatchdogView: View {
         }
         .sheet(isPresented: $threatHandler.showingThreatModal) {
             ThreatActionModal()
+        }
+        .sheet(isPresented: $showingDiagnostics) {
+            WatchdogDiagnosticsSheet(
+                events: diagnosticEvents,
+                onCopy: copyDiagnostics,
+                onExport: exportDiagnostics,
+                onClear: { diagnosticEvents.removeAll() }
+            )
         }
     }
 
@@ -260,10 +280,12 @@ struct WatchdogView: View {
         }
 
         directoryWatcher.watchDirectory = settingsManager.watchDirectory
+        recordDiagnostic("Configured watcher", category: .state, path: settingsManager.watchDirectory)
 
         // Handle new file added
         directoryWatcher.onFileAdded = { url in
             Task { @MainActor in
+                recordDiagnostic("Filesystem add event", category: .filesystem, path: url.path)
                 enqueueScan(at: url, reason: .added)
             }
         }
@@ -271,6 +293,7 @@ struct WatchdogView: View {
         // Handle file modified
         directoryWatcher.onFileModified = { url in
             Task { @MainActor in
+                recordDiagnostic("Filesystem modify event", category: .filesystem, path: url.path)
                 enqueueScan(at: url, reason: .modified)
             }
         }
@@ -278,12 +301,16 @@ struct WatchdogView: View {
         // Handle file deleted
         directoryWatcher.onFileDeleted = { url in
             Task { @MainActor in
+                recordDiagnostic("Filesystem delete event", category: .filesystem, path: url.path)
                 await handleDeletedFile(at: url)
             }
         }
 
         // Scan existing files when watcher starts
         directoryWatcher.onScanExistingFiles = { [self] in
+            await MainActor.run {
+                recordDiagnostic("Startup scan requested", category: .state, path: settingsManager.watchDirectory)
+            }
             await scanExistingFiles()
         }
 
@@ -299,6 +326,7 @@ struct WatchdogView: View {
 
         shouldAutoStart = true
         setupDirectoryWatcher()
+        recordDiagnostic("Auto-starting WatchDog", category: .state, path: settingsManager.watchDirectory)
         isWatching = true
         directoryWatcher.startWatching()
     }
@@ -340,10 +368,14 @@ struct WatchdogView: View {
     private func scanExistingFiles() async {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: settingsManager.watchDirectory, isDirectory: &isDirectory),
-              isDirectory.boolValue else { return }
+              isDirectory.boolValue else {
+            recordDiagnostic("Startup scan skipped because watch directory is unavailable", category: .skipped, path: settingsManager.watchDirectory)
+            return
+        }
 
         let fileManager = FileManager.default
         print("Scanning existing files in: \(settingsManager.watchDirectory)")
+        recordDiagnostic("Checking existing files", category: .state, path: settingsManager.watchDirectory)
         isStartupScanActive = true
         startupSummary = "Checking existing files..."
         startupFilesScanned = 0
@@ -359,6 +391,7 @@ struct WatchdogView: View {
             errorHandler: nil
         ) {
             let files = Array(enumerator).compactMap { $0 as? URL }
+            recordDiagnostic("Enumerated \(files.count) startup item(s)", category: .state, path: settingsManager.watchDirectory)
 
             for fileURL in files {
                 // Skip directories - only scan actual files
@@ -383,28 +416,34 @@ struct WatchdogView: View {
     private func enqueueScan(at url: URL, reason: WatchdogScanReason) {
         guard settingsManager.autoScanOnFileAdded else {
             print("Auto-scan disabled, ignoring file: \(url.path)")
+            recordDiagnostic("Auto-scan disabled", category: .skipped, path: url.path)
             return
         }
 
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            recordDiagnostic("File no longer exists before queueing", category: .skipped, path: url.path)
             return
         }
 
         if isDirectory.boolValue {
+            recordDiagnostic("Queueing directory contents", category: .queued, path: url.path)
             enqueueDirectoryContents(at: url, reason: reason)
             return
         }
 
         guard !settingsManager.shouldIgnoreFileForScanning(url) else {
+            recordDiagnostic("Ignored by extension rules", category: .ignored, path: url.path)
             return
         }
 
         guard queuedScanPaths.insert(url.path).inserted else {
+            recordDiagnostic("Already queued", category: .skipped, path: url.path)
             return
         }
 
         scanQueue.append(WatchdogScanRequest(url: url, reason: reason))
+        recordDiagnostic("Queued \(reason.label) scan", category: .queued, path: url.path)
         processScanQueueIfNeeded()
     }
 
@@ -415,17 +454,21 @@ struct WatchdogView: View {
             options: [.skipsHiddenFiles],
             errorHandler: nil
         ) else {
+            recordDiagnostic("Could not enumerate directory", category: .skipped, path: directoryURL.path)
             return
         }
 
+        var queuedCount = 0
         for case let fileURL as URL in enumerator {
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory), isDirectory.boolValue {
                 continue
             }
 
+            queuedCount += 1
             enqueueScan(at: fileURL, reason: reason)
         }
+        recordDiagnostic("Processed directory with \(queuedCount) file candidate(s)", category: .queued, path: directoryURL.path)
     }
 
     private func processScanQueueIfNeeded() {
@@ -451,15 +494,18 @@ struct WatchdogView: View {
         let url = request.url
 
         guard FileManager.default.fileExists(atPath: url.path) else {
+            recordDiagnostic("Queued file disappeared before scan", category: .skipped, path: url.path)
             return
         }
 
         guard !settingsManager.shouldIgnoreFileForScanning(url) else {
+            recordDiagnostic("Ignored by extension rules before scan", category: .ignored, path: url.path)
             return
         }
 
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+            recordDiagnostic("Queued item is directory, expanding contents", category: .queued, path: url.path)
             enqueueDirectoryContents(at: url, reason: request.reason)
             return
         }
@@ -470,6 +516,7 @@ struct WatchdogView: View {
            record.status == .clean,
            !ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId) {
             print("Skipping unchanged existing file: \(url.path)")
+            recordDiagnostic("Checked unchanged known-clean file", category: .checked, path: url.path)
             filesChecked += 1
             return
         }
@@ -479,21 +526,25 @@ struct WatchdogView: View {
            record.status == .clean,
            !ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId) {
             print("Skipping unchanged clean file: \(url.path)")
+            recordDiagnostic("Skipped unchanged clean file", category: .skipped, path: url.path)
             filesSkipped += 1
             return
         }
 
         if request.reason.requiresStabilityCheck,
            !ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId) {
+            recordDiagnostic("Skipped unchanged file", category: .skipped, path: url.path)
             return
         }
 
         if request.reason.requiresStabilityCheck {
             guard await waitForStableFile(at: url) else {
+                recordDiagnostic("File disappeared during stability check", category: .skipped, path: url.path)
                 return
             }
         }
 
+        recordDiagnostic("Started \(request.reason.label) scan", category: .scan, path: url.path)
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
@@ -567,6 +618,11 @@ struct WatchdogView: View {
     ) async {
         let folderId: Int64 = 1
         print("Watchdog scan result: \(result.filePath) status=\(result.status) threat=\(result.threatName ?? "none")")
+        recordDiagnostic(
+            "Scan finished: \(result.status.diagnosticLabel)\(result.threatName.map { " (\($0))" } ?? "")",
+            category: result.status.diagnosticCategory,
+            path: result.filePath
+        )
 
         await ScanResultsDatabase.shared.recordScan(
             path: result.filePath,
@@ -625,11 +681,58 @@ struct WatchdogView: View {
         }
 
         startupSummary = parts.isEmpty ? "Startup check complete" : "Startup check: \(parts.joined(separator: ", "))"
+        recordDiagnostic(startupSummary, category: .state, path: settingsManager.watchDirectory)
     }
 
     private func handleDeletedFile(at url: URL) async {
         print("File deleted: \(url.path)")
         updateThreatsCount()
+    }
+
+    private func recordDiagnostic(_ message: String, category: WatchdogDiagnosticCategory, path: String? = nil) {
+        diagnosticEvents.append(
+            WatchdogDiagnosticEvent(
+                timestamp: Date(),
+                category: category,
+                message: message,
+                path: path
+            )
+        )
+
+        if diagnosticEvents.count > 500 {
+            diagnosticEvents.removeFirst(diagnosticEvents.count - 500)
+        }
+    }
+
+    private func diagnosticsText() -> String {
+        if diagnosticEvents.isEmpty {
+            return "No WatchDog diagnostic events recorded."
+        }
+
+        return diagnosticEvents.map(\.exportLine).joined(separator: "\n")
+    }
+
+    private func copyDiagnostics() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(diagnosticsText(), forType: .string)
+    }
+
+    private func exportDiagnostics() {
+        let panel = NSSavePanel()
+        panel.title = "Export WatchDog Diagnostics"
+        panel.nameFieldStringValue = "ClamGUI-WatchDog-Diagnostics.log"
+        panel.allowedContentTypes = [.plainText]
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else {
+                return
+            }
+
+            do {
+                try diagnosticsText().write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                recordDiagnostic("Failed to export diagnostics: \(error.localizedDescription)", category: .error)
+            }
+        }
     }
 }
 
@@ -649,10 +752,198 @@ struct StatusIndicator: View {
     }
 }
 
+private struct WatchdogDiagnosticsSheet: View {
+    let events: [WatchdogDiagnosticEvent]
+    let onCopy: () -> Void
+    let onExport: () -> Void
+    let onClear: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("WatchDog Diagnostics")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+
+                Spacer()
+
+                Text("\(events.count) event\(events.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            if events.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "list.bullet.rectangle")
+                        .font(.system(size: 38))
+                        .foregroundColor(.secondary)
+
+                    Text("No diagnostic events recorded")
+                        .font(.headline)
+                    Text("WatchDog events will appear here after monitoring starts.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(events.reversed()) { event in
+                            WatchdogDiagnosticRow(event: event)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+
+            Divider()
+
+            HStack {
+                Button("Clear", role: .destructive, action: onClear)
+                    .disabled(events.isEmpty)
+
+                Spacer()
+
+                Button("Copy", action: onCopy)
+                    .disabled(events.isEmpty)
+                Button("Export...", action: onExport)
+                    .disabled(events.isEmpty)
+            }
+        }
+        .padding()
+        .frame(width: 720, height: 520)
+    }
+}
+
+private struct WatchdogDiagnosticRow: View {
+    let event: WatchdogDiagnosticEvent
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: event.category.icon)
+                .foregroundColor(event.category.color)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(event.timestamp.formatted(date: .omitted, time: .standard))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+
+                    Text(event.category.label)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(event.category.color)
+                }
+
+                Text(event.message)
+                    .font(.caption)
+                    .foregroundColor(.primary)
+
+                if let path = event.path, !path.isEmpty {
+                    Text(path)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(Color.secondary.opacity(0.08))
+        .cornerRadius(6)
+    }
+}
+
+private struct WatchdogDiagnosticEvent: Identifiable {
+    let id = UUID()
+    let timestamp: Date
+    let category: WatchdogDiagnosticCategory
+    let message: String
+    let path: String?
+
+    var exportLine: String {
+        let pathSuffix = path.map { " path=\"\($0)\"" } ?? ""
+        return "[\(timestamp.ISO8601Format())] [\(category.rawValue)] \(message)\(pathSuffix)"
+    }
+}
+
+private enum WatchdogDiagnosticCategory: String {
+    case state
+    case filesystem
+    case queued
+    case scan
+    case clean
+    case threat
+    case checked
+    case skipped
+    case ignored
+    case error
+
+    var label: String {
+        switch self {
+        case .state: return "State"
+        case .filesystem: return "Filesystem"
+        case .queued: return "Queued"
+        case .scan: return "Scan"
+        case .clean: return "Clean"
+        case .threat: return "Threat"
+        case .checked: return "Checked"
+        case .skipped: return "Skipped"
+        case .ignored: return "Ignored"
+        case .error: return "Error"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .state: return "switch.2"
+        case .filesystem: return "folder.badge.gearshape"
+        case .queued: return "tray.and.arrow.down"
+        case .scan: return "magnifyingglass"
+        case .clean: return "checkmark.shield"
+        case .threat: return "exclamationmark.triangle.fill"
+        case .checked: return "checkmark.circle"
+        case .skipped: return "forward.end"
+        case .ignored: return "eye.slash"
+        case .error: return "xmark.octagon"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .state, .filesystem, .queued, .scan:
+            return .blue
+        case .clean, .checked:
+            return .green
+        case .threat:
+            return .red
+        case .skipped, .ignored:
+            return .secondary
+        case .error:
+            return .orange
+        }
+    }
+}
+
 private enum WatchdogScanReason {
     case existing
     case added
     case modified
+
+    var label: String {
+        switch self {
+        case .existing:
+            return "startup"
+        case .added:
+            return "added"
+        case .modified:
+            return "modified"
+        }
+    }
 
     var requiresStabilityCheck: Bool {
         switch self {
@@ -672,6 +963,36 @@ private struct WatchdogScanRequest {
 private struct WatchdogFileState: Equatable {
     let size: UInt64
     let modificationDate: Date
+}
+
+private extension ClamAVManager.ScanResult.ScanStatus {
+    var diagnosticLabel: String {
+        switch self {
+        case .clean:
+            return "clean"
+        case .infected:
+            return "infected"
+        case .skippedTooLarge:
+            return "not scanned, oversized"
+        case .skippedPermission:
+            return "not scanned, unreadable"
+        case .error:
+            return "error"
+        }
+    }
+
+    var diagnosticCategory: WatchdogDiagnosticCategory {
+        switch self {
+        case .clean:
+            return .clean
+        case .infected:
+            return .threat
+        case .skippedTooLarge, .skippedPermission:
+            return .skipped
+        case .error:
+            return .error
+        }
+    }
 }
 
 #Preview {
