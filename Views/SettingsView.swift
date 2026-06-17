@@ -13,12 +13,20 @@ struct SettingsView: View {
     @EnvironmentObject var updaterManager: UpdaterManager
     
     var body: some View {
-        VStack(spacing: 0) {
-            settingsForm
-                .formStyle(.grouped)
-                .frame(maxWidth: 820, maxHeight: .infinity)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 18)
+        GeometryReader { proxy in
+            HStack {
+                Spacer(minLength: 0)
+
+                settingsForm
+                    .formStyle(.grouped)
+                    .frame(
+                        width: min(proxy.size.width - 48, 820),
+                        height: max(proxy.size.height - 36, 0)
+                    )
+                    .padding(.vertical, 18)
+
+                Spacer(minLength: 0)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {

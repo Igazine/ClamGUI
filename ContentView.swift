@@ -46,7 +46,7 @@ struct ContentView: View {
                     .tag(3)
                 }
         }
-        .frame(width: 900, height: 650)
+        .frame(minWidth: 900, minHeight: 650)
         .padding()
         .onAppear {
             Task {
