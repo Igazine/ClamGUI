@@ -22,6 +22,7 @@ enum ScanStatus: String {
     case clean
     case infected
     case skippedTooLarge
+    case skippedPermission
     case error
 }
 
@@ -104,7 +105,7 @@ class ScanResultsDatabase: @unchecked Sendable {
     /// Record or update a scan result
     func recordScan(path: String, folderId: Int64, status: ScanStatus, threatName: String? = nil) async {
         let attrs = try? FileManager.default.attributesOfItem(atPath: path)
-        guard attrs != nil || status == .infected else {
+        guard attrs != nil || status.shouldRecordWithoutAttributes else {
             return
         }
 
@@ -286,6 +287,7 @@ class ScanResultsDatabase: @unchecked Sendable {
         case .clean: bindText(statement, index: 3, value: "clean")
         case .infected: bindText(statement, index: 3, value: "infected")
         case .skippedTooLarge: bindText(statement, index: 3, value: "skippedTooLarge")
+        case .skippedPermission: bindText(statement, index: 3, value: "skippedPermission")
         case .error: bindText(statement, index: 3, value: "error")
         }
         
@@ -346,5 +348,16 @@ class ScanResultsDatabase: @unchecked Sendable {
 
     private func bindText(_ statement: OpaquePointer?, index: Int32, value: String) {
         sqlite3_bind_text(statement, index, value, -1, sqliteTransient)
+    }
+}
+
+private extension ScanStatus {
+    var shouldRecordWithoutAttributes: Bool {
+        switch self {
+        case .infected, .skippedTooLarge, .skippedPermission:
+            return true
+        case .clean, .error:
+            return false
+        }
     }
 }

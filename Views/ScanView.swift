@@ -395,6 +395,8 @@ struct ScanResultCard: View {
             return .red
         case .skippedTooLarge:
             return .orange
+        case .skippedPermission:
+            return .orange
         case .error:
             return .orange
         }
@@ -407,6 +409,8 @@ struct ScanResultCard: View {
         case .infected:
             return Color.red.opacity(0.1)
         case .skippedTooLarge:
+            return Color.orange.opacity(0.1)
+        case .skippedPermission:
             return Color.orange.opacity(0.1)
         case .error:
             return Color.orange.opacity(0.1)
@@ -421,6 +425,8 @@ struct ScanResultCard: View {
             return Image(systemName: "exclamationmark.triangle.fill")
         case .skippedTooLarge:
             return Image(systemName: "exclamationmark.circle.fill")
+        case .skippedPermission:
+            return Image(systemName: "lock.circle.fill")
         case .error:
             return Image(systemName: "xmark.circle.fill")
         }
@@ -433,6 +439,8 @@ struct ScanResultCard: View {
         case .infected:
             return "Threat Detected"
         case .skippedTooLarge:
+            return "Not Scanned"
+        case .skippedPermission:
             return "Not Scanned"
         case .error:
             return "Scan Error"

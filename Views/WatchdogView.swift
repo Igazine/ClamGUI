@@ -17,13 +17,19 @@ struct WatchdogView: View {
     @State private var isWatching = false
     @State private var filesScanned: Int = 0
     @State private var filesSkipped: Int = 0
+    @State private var filesChecked: Int = 0
+    @State private var startupFilesScanned: Int = 0
+    @State private var startupThreatsFound: Int = 0
+    @State private var startupSkippedTooLarge: Int = 0
+    @State private var startupSkippedPermission: Int = 0
     @State private var threatsCount: Int = 0
     @State private var recordCount: Int = 0
     @State private var showingFoundThreats = false
-    @State private var hasShownInitialModal = false  // Track if we've shown modal for initial scan threats
     @State private var scanQueue: [WatchdogScanRequest] = []
     @State private var queuedScanPaths: Set<String> = []
     @State private var isProcessingScanQueue = false
+    @State private var isStartupScanActive = false
+    @State private var startupSummary: String = ""
     
     // Auto-start watching once a scanner backend is ready and a directory is set.
     @State private var shouldAutoStart = false
@@ -105,6 +111,9 @@ struct WatchdogView: View {
                     HStack(spacing: 10) {
                         Text("Scanned: \(filesScanned)")
                             .foregroundColor(.blue)
+                        Text("•")
+                        Text("Checked: \(filesChecked)")
+                            .foregroundColor(.secondary)
                         Text("•")
                         Text("Skipped: \(filesSkipped)")
                             .foregroundColor(.green)
@@ -210,7 +219,7 @@ struct WatchdogView: View {
         }
 
         guard let currentScanningFile else {
-            return " "
+            return startupSummary.isEmpty ? " " : startupSummary
         }
 
         return "Scanning \(URL(fileURLWithPath: currentScanningFile).lastPathComponent)"
@@ -297,13 +306,19 @@ struct WatchdogView: View {
     private func resetWatchdogCounters() {
         filesScanned = 0
         filesSkipped = 0
+        filesChecked = 0
+        startupFilesScanned = 0
+        startupThreatsFound = 0
+        startupSkippedTooLarge = 0
+        startupSkippedPermission = 0
         threatsCount = 0
         recordCount = 0
         currentScanningFile = nil
         scanQueue.removeAll()
         queuedScanPaths.removeAll()
         isProcessingScanQueue = false
-        hasShownInitialModal = false
+        isStartupScanActive = false
+        startupSummary = ""
         shouldAutoStart = false
     }
 
@@ -329,6 +344,12 @@ struct WatchdogView: View {
 
         let fileManager = FileManager.default
         print("Scanning existing files in: \(settingsManager.watchDirectory)")
+        isStartupScanActive = true
+        startupSummary = "Checking existing files..."
+        startupFilesScanned = 0
+        startupThreatsFound = 0
+        startupSkippedTooLarge = 0
+        startupSkippedPermission = 0
 
         // Enumerate all files in directory
         if let enumerator = fileManager.enumerator(
@@ -351,6 +372,10 @@ struct WatchdogView: View {
         }
 
         updateThreatsCount()
+
+        if scanQueue.isEmpty, !isProcessingScanQueue {
+            finishStartupScanIfNeeded()
+        }
 
         print("Queued existing files for Watchdog scan")
     }
@@ -418,6 +443,7 @@ struct WatchdogView: View {
             }
 
             isProcessingScanQueue = false
+            finishStartupScanIfNeeded()
         }
     }
 
@@ -444,7 +470,7 @@ struct WatchdogView: View {
            record.status == .clean,
            !ScanResultsDatabase.shared.needsScan(url.path, folderId: folderId) {
             print("Skipping unchanged existing file: \(url.path)")
-            filesSkipped += 1
+            filesChecked += 1
             return
         }
 
@@ -471,15 +497,35 @@ struct WatchdogView: View {
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
-        if result.status == .skippedTooLarge {
-            filesSkipped += 1
-        } else if result.status != .error {
+        switch result.status {
+        case .clean:
             filesScanned += 1
+            if request.reason == .existing {
+                startupFilesScanned += 1
+            }
+        case .infected:
+            filesScanned += 1
+            if request.reason == .existing {
+                startupFilesScanned += 1
+                startupThreatsFound += 1
+            }
+        case .skippedTooLarge:
+            filesSkipped += 1
+            if request.reason == .existing {
+                startupSkippedTooLarge += 1
+            }
+        case .skippedPermission:
+            filesSkipped += 1
+            if request.reason == .existing {
+                startupSkippedPermission += 1
+            }
+        case .error:
+            break
         }
         await recordWatchdogScanResult(
             result,
             showNotification: request.reason != .existing,
-            limitInitialModal: request.reason == .existing
+            showModal: request.reason != .existing
         )
     }
 
@@ -517,7 +563,7 @@ struct WatchdogView: View {
     private func recordWatchdogScanResult(
         _ result: ClamAVManager.ScanResult,
         showNotification: Bool,
-        limitInitialModal: Bool
+        showModal: Bool
     ) async {
         let folderId: Int64 = 1
         print("Watchdog scan result: \(result.filePath) status=\(result.status) threat=\(result.threatName ?? "none")")
@@ -545,20 +591,40 @@ struct WatchdogView: View {
 
         updateThreatsCount()
 
-        if limitInitialModal {
-            if !hasShownInitialModal {
-                hasShownInitialModal = true
-                await ThreatActionHandler.shared.handleThreatDetected(
-                    filePath: result.filePath,
-                    threatName: result.threatName ?? "Unknown"
-                )
-            }
-        } else {
+        if showModal {
             await ThreatActionHandler.shared.handleThreatDetected(
                 filePath: result.filePath,
                 threatName: result.threatName ?? "Unknown"
             )
         }
+    }
+
+    private func finishStartupScanIfNeeded() {
+        guard isStartupScanActive else {
+            return
+        }
+
+        isStartupScanActive = false
+
+        var parts: [String] = []
+        if filesChecked > 0 {
+            parts.append("checked \(filesChecked) known clean")
+        }
+        if startupFilesScanned > 0 {
+            parts.append("scanned \(startupFilesScanned) changed")
+        }
+        if startupThreatsFound > 0 {
+            parts.append("found \(startupThreatsFound) threat\(startupThreatsFound == 1 ? "" : "s")")
+        }
+
+        if startupSkippedTooLarge > 0 {
+            parts.append("skipped \(startupSkippedTooLarge) oversized")
+        }
+        if startupSkippedPermission > 0 {
+            parts.append("skipped \(startupSkippedPermission) unreadable")
+        }
+
+        startupSummary = parts.isEmpty ? "Startup check complete" : "Startup check: \(parts.joined(separator: ", "))"
     }
 
     private func handleDeletedFile(at url: URL) async {

@@ -41,6 +41,7 @@ class ClamAVManager: ObservableObject {
             case clean
             case infected
             case skippedTooLarge
+            case skippedPermission
             case error
         }
     }
@@ -50,6 +51,7 @@ class ClamAVManager: ObservableObject {
     private enum ScanPreflightFailure {
         case error(String)
         case skippedTooLarge(String)
+        case skippedPermission(String)
 
         var status: ScanResult.ScanStatus {
             switch self {
@@ -57,12 +59,16 @@ class ClamAVManager: ObservableObject {
                 return .error
             case .skippedTooLarge:
                 return .skippedTooLarge
+            case .skippedPermission:
+                return .skippedPermission
             }
         }
 
         var message: String {
             switch self {
-            case .error(let message), .skippedTooLarge(let message):
+            case .error(let message),
+                 .skippedTooLarge(let message),
+                 .skippedPermission(let message):
                 return message
             }
         }
@@ -151,7 +157,7 @@ class ClamAVManager: ObservableObject {
         }
 
         guard fileManager.isReadableFile(atPath: path) else {
-            return .error("ClamGUI cannot read this file with current permissions")
+            return .skippedPermission("Not scanned: ClamGUI cannot read this file with current permissions")
         }
 
         if let size = (try? fileManager.attributesOfItem(atPath: path)[.size]) as? UInt64,
@@ -218,6 +224,8 @@ extension ClamAVManager.ScanResult {
             return .infected
         case .skippedTooLarge:
             return .skippedTooLarge
+        case .skippedPermission:
+            return .skippedPermission
         case .error:
             return .error
         }
