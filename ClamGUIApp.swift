@@ -25,7 +25,6 @@ struct ClamGUIApp: App {
                     .environmentObject(updaterManager)
             }
         }
-        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appTermination) {
