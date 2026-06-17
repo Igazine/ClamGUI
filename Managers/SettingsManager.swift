@@ -57,6 +57,12 @@ class SettingsManager: ObservableObject {
     ].map { SettingsManager.normalizedExtension($0) }
         .removingDuplicates()
         .sorted()
+
+    static var defaultQuarantinePath: String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/ClamGUI/Quarantine")
+            .path
+    }
     
     // MARK: - Initialization
     
@@ -127,10 +133,7 @@ class SettingsManager: ObservableObject {
     func loadSettings() {
         guard let settings = UserDefaults.standard.dictionary(forKey: userDefaultsKey) else {
             // Set default quarantine path on first load
-            let defaultQuarantinePath = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Application Support/ClamGUI/Quarantine")
-                .path
-            quarantinePath = defaultQuarantinePath
+            quarantinePath = Self.defaultQuarantinePath
             loadDatabaseSettings()
             return
         }
@@ -142,7 +145,8 @@ class SettingsManager: ObservableObject {
         startAtLogin = settings["startAtLogin"] as? Bool ?? false
         hideMenuBarIcon = settings["hideMenuBarIcon"] as? Bool ?? false
         quarantineEnabled = settings["quarantineEnabled"] as? Bool ?? false
-        quarantinePath = settings["quarantinePath"] as? String ?? ""
+        let storedQuarantinePath = settings["quarantinePath"] as? String ?? ""
+        quarantinePath = storedQuarantinePath.isEmpty ? Self.defaultQuarantinePath : storedQuarantinePath
         ignoredFileExtensions = normalizedIgnoredExtensions(
             settings["ignoredFileExtensions"] as? [String] ?? Self.defaultIgnoredFileExtensions
         )
@@ -180,10 +184,7 @@ class SettingsManager: ObservableObject {
         startAtLogin = false
         hideMenuBarIcon = false
         quarantineEnabled = false
-        let defaultQuarantinePath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/ClamGUI/Quarantine")
-            .path
-        quarantinePath = defaultQuarantinePath
+        quarantinePath = Self.defaultQuarantinePath
         threatAutoAction = false
         threatAutoActionValue = .quarantine
         clearExecutableBit = false

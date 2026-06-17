@@ -338,6 +338,8 @@ struct ThreatCard: View {
         isQuarantining = false
         
         if success {
+            let folderId: Int64 = 1
+            await ScanResultsDatabase.shared.removeRecord(path: threat.filePath, folderId: folderId)
             onActionCompleted()
         }
     }

@@ -11,6 +11,7 @@ struct SettingsView: View {
     @EnvironmentObject var settingsManager: SettingsManager
     @EnvironmentObject var clamAVManager: ClamAVManager
     @EnvironmentObject var updaterManager: UpdaterManager
+    @ObservedObject private var quarantineManager = QuarantineManager.shared
     
     var body: some View {
         GeometryReader { proxy in
@@ -100,6 +101,10 @@ struct SettingsView: View {
                     .buttonStyle(.bordered)
                     .font(.caption)
                 }
+            }
+
+            if !quarantineManager.quarantinedFiles.isEmpty {
+                QuarantineInventoryView()
             }
 
             Label("Quarantined files are moved to a secure location", systemImage: "lock.shield")
@@ -325,6 +330,136 @@ struct SettingsView: View {
                 settingsManager.quarantinePath = url.path
                 settingsManager.saveSettings()
             }
+        }
+    }
+}
+
+private struct QuarantineInventoryView: View {
+    @ObservedObject private var quarantineManager = QuarantineManager.shared
+    @State private var busyFileId: UUID?
+
+    private var displayedFiles: [QuarantinedFile] {
+        Array(quarantineManager.quarantinedFiles.prefix(6))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+
+            HStack {
+                Label("Quarantined Files", systemImage: "lock.doc")
+                    .font(.headline)
+
+                Spacer()
+
+                Text("\(quarantineManager.quarantinedFiles.count)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(displayedFiles) { file in
+                    QuarantineInventoryRow(
+                        file: file,
+                        isBusy: busyFileId == file.id,
+                        onRestore: { restore(file) },
+                        onDelete: { delete(file) },
+                        onReveal: { reveal(file) }
+                    )
+                }
+            }
+
+            if quarantineManager.quarantinedFiles.count > displayedFiles.count {
+                Text("\(quarantineManager.quarantinedFiles.count - displayedFiles.count) more quarantined file(s)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private func restore(_ file: QuarantinedFile) {
+        busyFileId = file.id
+        Task {
+            _ = await quarantineManager.restoreFile(file)
+            await MainActor.run { busyFileId = nil }
+        }
+    }
+
+    private func delete(_ file: QuarantinedFile) {
+        busyFileId = file.id
+        Task {
+            _ = await quarantineManager.deleteFile(file)
+            await MainActor.run { busyFileId = nil }
+        }
+    }
+
+    private func reveal(_ file: QuarantinedFile) {
+        NSWorkspace.shared.selectFile(file.quarantinePath, inFileViewerRootedAtPath: "")
+    }
+}
+
+private struct QuarantineInventoryRow: View {
+    let file: QuarantinedFile
+    let isBusy: Bool
+    let onRestore: () -> Void
+    let onDelete: () -> Void
+    let onReveal: () -> Void
+    @State private var showingDeleteConfirmation = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.shield")
+                .foregroundColor(.orange)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(URL(fileURLWithPath: file.originalPath).lastPathComponent)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+
+                Text(file.threatName)
+                    .font(.caption2)
+                    .foregroundColor(.red)
+                    .lineLimit(1)
+
+                Text(file.originalPath)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer()
+
+            Text(formatFileSize(UInt64(max(file.fileSize, 0))))
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            if isBusy {
+                ProgressView()
+                    .scaleEffect(0.6)
+            } else {
+                Button("Show", action: onReveal)
+                    .buttonStyle(.bordered)
+
+                Button("Restore", action: onRestore)
+                    .buttonStyle(.bordered)
+
+                Button("Delete", role: .destructive) {
+                    showingDeleteConfirmation = true
+                }
+                    .buttonStyle(.bordered)
+            }
+        }
+        .padding(8)
+        .background(Color.secondary.opacity(0.08))
+        .cornerRadius(6)
+        .alert("Delete Quarantined File", isPresented: $showingDeleteConfirmation) {
+            Button("Delete File", role: .destructive, action: onDelete)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes the quarantined copy. The original file has already been moved out of its original location.")
         }
     }
 }

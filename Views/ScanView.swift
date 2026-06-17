@@ -219,11 +219,16 @@ struct ScanView: View {
 
         let success = await QuarantineManager.shared.quarantineFile(at: url.path, threatName: threatName)
 
-        if success && settingsManager.showNotifications {
-            NotificationManager.shared.showWatchdogNotification(
-                fileName: url.lastPathComponent,
-                status: "Moved to quarantine"
-            )
+        if success {
+            let folderId: Int64 = 1
+            await ScanResultsDatabase.shared.removeRecord(path: url.path, folderId: folderId)
+
+            if settingsManager.showNotifications {
+                NotificationManager.shared.showWatchdogNotification(
+                    fileName: url.lastPathComponent,
+                    status: "Moved to quarantine"
+                )
+            }
         }
     }
 

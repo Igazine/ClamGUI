@@ -123,6 +123,7 @@ class ThreatActionHandler: ObservableObject {
         case .quarantine:
             if await QuarantineManager.shared.quarantineFile(at: filePath, threatName: threatName) {
                 print("✅ Quarantined: \(filePath)")
+                await ScanResultsDatabase.shared.removeRecord(path: filePath, folderId: 1)
                 await updateThreatRecord(filePath: filePath, action: "quarantined")
             } else {
                 print("⚠️ Failed to quarantine: \(filePath)")

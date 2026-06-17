@@ -74,8 +74,6 @@ class QuarantineManager: ObservableObject {
     @Published var isQuarantining = false
     @Published var quarantinedFiles: [QuarantinedFile] = []
     
-    private let quarantineQueue = DispatchQueue(label: "com.clamgui.quarantine", attributes: .concurrent)
-    
     private init() {
         loadQuarantinedFiles()
     }
@@ -109,8 +107,8 @@ class QuarantineManager: ObservableObject {
         let isCrossVolume = !isSameVolume(sourceURL, quarantineURL)
         
         let fileName = sourceURL.lastPathComponent
-        let timestamp = Date().timeIntervalSince1970
-        let quarantinedFileName = "\(Int(timestamp))_\(fileName)"
+        let quarantineId = UUID()
+        let quarantinedFileName = "\(quarantineId.uuidString)_\(fileName)"
         let destinationURL = quarantineURL.appendingPathComponent(quarantinedFileName)
 
         do {
@@ -130,8 +128,11 @@ class QuarantineManager: ObservableObject {
                 progress?(1.0)
             }
 
+            hardenQuarantinedFile(at: destinationURL)
+
             // Record quarantine operation
             let quarantinedFile = QuarantinedFile(
+                id: quarantineId,
                 originalPath: path,
                 quarantinePath: destinationURL.path,
                 threatName: threatName,
@@ -139,7 +140,7 @@ class QuarantineManager: ObservableObject {
                 fileSize: try destinationURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             )
 
-            await saveQuarantinedFile(quarantinedFile)
+            saveQuarantinedFile(quarantinedFile)
 
             print("File quarantined: \(path) -> \(destinationURL.path)")
             return true
@@ -173,8 +174,18 @@ class QuarantineManager: ObservableObject {
         try? FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
         
         do {
+            guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+                removeQuarantinedFile(quarantinedFile)
+                return false
+            }
+
+            guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
+                print("Failed to restore file: destination already exists")
+                return false
+            }
+
             try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
-            await removeQuarantinedFile(quarantinedFile)
+            removeQuarantinedFile(quarantinedFile)
             print("File restored: \(quarantinedFile.quarantinePath) -> \(quarantinedFile.originalPath)")
             return true
         } catch {
@@ -184,15 +195,20 @@ class QuarantineManager: ObservableObject {
     }
     
     /// Delete a quarantined file permanently
-    func deleteFile(_ quarantinedFile: QuarantinedFile) async {
+    @discardableResult
+    func deleteFile(_ quarantinedFile: QuarantinedFile) async -> Bool {
         let sourceURL = URL(fileURLWithPath: quarantinedFile.quarantinePath)
         
         do {
-            try FileManager.default.removeItem(at: sourceURL)
-            await removeQuarantinedFile(quarantinedFile)
+            if FileManager.default.fileExists(atPath: sourceURL.path) {
+                try FileManager.default.removeItem(at: sourceURL)
+            }
+            removeQuarantinedFile(quarantinedFile)
             print("File deleted from quarantine: \(quarantinedFile.quarantinePath)")
+            return true
         } catch {
             print("Failed to delete quarantined file: \(error.localizedDescription)")
+            return false
         }
     }
     
@@ -211,9 +227,7 @@ class QuarantineManager: ObservableObject {
     /// Open quarantine directory in Finder
     func openQuarantineDirectory() {
         let path = getQuarantineDirectory()
-        if let url = URL(string: "file://\(path)") {
-            NSWorkspace.shared.open(url)
-        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
 
     // MARK: - Private Methods
@@ -248,29 +262,72 @@ class QuarantineManager: ObservableObject {
         }
     }
     
-    // MARK: - Private Methods
-    
+    private func hardenQuarantinedFile(at url: URL) {
+        do {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: NSNumber(value: 0o600)],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            print("Failed to harden quarantined file permissions: \(error.localizedDescription)")
+        }
+    }
+
+    private var manifestURL: URL {
+        let homeDir = ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
+        return URL(fileURLWithPath: homeDir)
+            .appendingPathComponent("Library/Application Support/ClamGUI/quarantine_manifest.json")
+    }
+
     private func loadQuarantinedFiles() {
-        // In a full implementation, this would load from a database
-        // For now, we'll just use the in-memory array
+        let url = manifestURL
+        guard let data = try? Data(contentsOf: url) else {
+            quarantinedFiles = []
+            return
+        }
+
+        do {
+            quarantinedFiles = try JSONDecoder().decode([QuarantinedFile].self, from: data)
+        } catch {
+            print("Failed to load quarantine manifest: \(error.localizedDescription)")
+            quarantinedFiles = []
+        }
     }
     
-    private func saveQuarantinedFile(_ file: QuarantinedFile) async {
+    private func saveQuarantinedFile(_ file: QuarantinedFile) {
         quarantinedFiles.append(file)
-        // In a full implementation, this would save to a database
+        persistQuarantineManifest()
     }
     
-    private func removeQuarantinedFile(_ file: QuarantinedFile) async {
-        quarantinedFiles.removeAll { $0.quarantinePath == file.quarantinePath }
-        // In a full implementation, this would update the database
+    private func removeQuarantinedFile(_ file: QuarantinedFile) {
+        quarantinedFiles.removeAll { $0.id == file.id }
+        persistQuarantineManifest()
+    }
+
+    private func persistQuarantineManifest() {
+        let url = manifestURL
+
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(quarantinedFiles)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            print("Failed to save quarantine manifest: \(error.localizedDescription)")
+        }
     }
 }
 
 // MARK: - Models
 
 /// Represents a quarantined file
-struct QuarantinedFile: Identifiable, Equatable {
-    let id = UUID()
+struct QuarantinedFile: Identifiable, Codable, Equatable {
+    let id: UUID
     let originalPath: String
     let quarantinePath: String
     let threatName: String
