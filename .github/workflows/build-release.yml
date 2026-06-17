@@ -1,12 +1,9 @@
 name: Build and Release
 
+# Disabled for now. The bundled ClamAV build/release pipeline is not ready for CI yet.
+# Run manually from GitHub Actions if this workflow is needed during packaging work.
 on:
-  push:
-    branches: [main, develop]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 env:
   PROJECT_TYPE: APP
