@@ -40,7 +40,31 @@ class ClamAVManager: ObservableObject {
         enum ScanStatus {
             case clean
             case infected
+            case skippedTooLarge
             case error
+        }
+    }
+
+    static let maxScannableFileSizeBytes: UInt64 = 2 * 1024 * 1024 * 1024
+
+    private enum ScanPreflightFailure {
+        case error(String)
+        case skippedTooLarge(String)
+
+        var status: ScanResult.ScanStatus {
+            switch self {
+            case .error:
+                return .error
+            case .skippedTooLarge:
+                return .skippedTooLarge
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .error(let message), .skippedTooLarge(let message):
+                return message
+            }
         }
     }
 
@@ -81,8 +105,13 @@ class ClamAVManager: ObservableObject {
 
     /// Scan a single file and wait for the result.
     func scanFile(at path: String) async -> ScanResult {
-        if let preflightError = validateScannableFile(at: path) {
-            let result = ScanResult(filePath: path, status: .error, threatName: preflightError, timestamp: Date())
+        if let preflightFailure = validateScannableFile(at: path) {
+            let result = ScanResult(
+                filePath: path,
+                status: preflightFailure.status,
+                threatName: preflightFailure.message,
+                timestamp: Date()
+            )
             lastScanResult = result
             return result
         }
@@ -109,20 +138,25 @@ class ClamAVManager: ObservableObject {
         return result
     }
 
-    private func validateScannableFile(at path: String) -> String? {
+    private func validateScannableFile(at path: String) -> ScanPreflightFailure? {
         let fileManager = FileManager.default
         var isDirectory: ObjCBool = false
 
         guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory) else {
-            return "File does not exist"
+            return .error("File does not exist")
         }
 
         guard !isDirectory.boolValue else {
-            return "Manual scan expects a file, not a directory"
+            return .error("Manual scan expects a file, not a directory")
         }
 
         guard fileManager.isReadableFile(atPath: path) else {
-            return "ClamGUI cannot read this file with current permissions"
+            return .error("ClamGUI cannot read this file with current permissions")
+        }
+
+        if let size = (try? fileManager.attributesOfItem(atPath: path)[.size]) as? UInt64,
+           size > Self.maxScannableFileSizeBytes {
+            return .skippedTooLarge("Not scanned: exceeds ClamAV's 2 GB engine limit")
         }
 
         return nil
@@ -172,5 +206,20 @@ class ClamAVManager: ObservableObject {
     func shutdown() async -> String {
         await ScanEngineManager.shared.shutdown()
         return "Scanner shut down"
+    }
+}
+
+extension ClamAVManager.ScanResult {
+    var databaseStatus: ClamGUI.ScanStatus {
+        switch status {
+        case .clean:
+            return .clean
+        case .infected:
+            return .infected
+        case .skippedTooLarge:
+            return .skippedTooLarge
+        case .error:
+            return .error
+        }
     }
 }

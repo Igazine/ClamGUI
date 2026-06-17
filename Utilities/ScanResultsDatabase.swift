@@ -21,6 +21,7 @@ struct DatabaseConfig {
 enum ScanStatus: String {
     case clean
     case infected
+    case skippedTooLarge
     case error
 }
 
@@ -169,7 +170,7 @@ class ScanResultsDatabase: @unchecked Sendable {
                 id: id,
                 path: path,
                 folderId: sqlite3_column_int64(statement, 2),
-                status: ScanStatus(rawValue: statusStr) ?? .clean,
+                status: ScanStatus(rawValue: statusStr) ?? .error,
                 threatName: threat == "NULL" ? nil : threat,
                 scanTimestamp: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_double(statement, 5))),
                 fileSize: sqlite3_column_int64(statement, 6),
@@ -284,6 +285,7 @@ class ScanResultsDatabase: @unchecked Sendable {
         switch status {
         case .clean: bindText(statement, index: 3, value: "clean")
         case .infected: bindText(statement, index: 3, value: "infected")
+        case .skippedTooLarge: bindText(statement, index: 3, value: "skippedTooLarge")
         case .error: bindText(statement, index: 3, value: "error")
         }
         
@@ -331,7 +333,7 @@ class ScanResultsDatabase: @unchecked Sendable {
                 id: sqlite3_column_int64(statement, 0),
                 path: String(cString: sqlite3_column_text(statement, 1)),
                 folderId: sqlite3_column_int64(statement, 2),
-                status: ScanStatus(rawValue: String(cString: sqlite3_column_text(statement, 3))) ?? .clean,
+                status: ScanStatus(rawValue: String(cString: sqlite3_column_text(statement, 3))) ?? .error,
                 threatName: sqlite3_column_text(statement, 4).map { String(cString: $0) },
                 scanTimestamp: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_double(statement, 5))),
                 fileSize: sqlite3_column_int64(statement, 6),

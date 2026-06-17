@@ -471,7 +471,9 @@ struct WatchdogView: View {
         currentScanningFile = url.path
         let result = await clamAVManager.scanFile(at: url.path)
         currentScanningFile = nil
-        if result.status != .error {
+        if result.status == .skippedTooLarge {
+            filesSkipped += 1
+        } else if result.status != .error {
             filesScanned += 1
         }
         await recordWatchdogScanResult(
@@ -520,11 +522,10 @@ struct WatchdogView: View {
         let folderId: Int64 = 1
         print("Watchdog scan result: \(result.filePath) status=\(result.status) threat=\(result.threatName ?? "none")")
 
-        let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
         await ScanResultsDatabase.shared.recordScan(
             path: result.filePath,
             folderId: folderId,
-            status: status,
+            status: result.databaseStatus,
             threatName: result.threatName
         )
 

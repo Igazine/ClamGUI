@@ -167,7 +167,7 @@ struct ScanView: View {
         let result = await clamAVManager.scanFile(at: url.path)
         manualScanResult = result
 
-        // Record in database ONLY if scan was successful (not an error)
+        // Record conclusive scan outcomes and explicit skip reasons, but not transient errors.
         if result.status != .error {
             await recordScanResult(url: url, result: result)
         }
@@ -200,11 +200,10 @@ struct ScanView: View {
     /// Record scan result in database
     private func recordScanResult(url: URL, result: ClamAVManager.ScanResult) async {
         let folderId: Int64 = 1
-        let status: ScanStatus = result.status == .clean ? .clean : (result.status == .infected ? .infected : .error)
         await ScanResultsDatabase.shared.recordScan(
             path: url.path,
             folderId: folderId,
-            status: status,
+            status: result.databaseStatus,
             threatName: result.threatName
         )
     }
@@ -394,6 +393,8 @@ struct ScanResultCard: View {
             return .green
         case .infected:
             return .red
+        case .skippedTooLarge:
+            return .orange
         case .error:
             return .orange
         }
@@ -405,6 +406,8 @@ struct ScanResultCard: View {
             return Color.green.opacity(0.1)
         case .infected:
             return Color.red.opacity(0.1)
+        case .skippedTooLarge:
+            return Color.orange.opacity(0.1)
         case .error:
             return Color.orange.opacity(0.1)
         }
@@ -416,6 +419,8 @@ struct ScanResultCard: View {
             return Image(systemName: "checkmark.circle.fill")
         case .infected:
             return Image(systemName: "exclamationmark.triangle.fill")
+        case .skippedTooLarge:
+            return Image(systemName: "exclamationmark.circle.fill")
         case .error:
             return Image(systemName: "xmark.circle.fill")
         }
@@ -427,6 +432,8 @@ struct ScanResultCard: View {
             return "Clean"
         case .infected:
             return "Threat Detected"
+        case .skippedTooLarge:
+            return "Not Scanned"
         case .error:
             return "Scan Error"
         }
