@@ -4,11 +4,13 @@ export COPYFILE_DISABLE=1
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 derived_data="${CLAMGUI_DERIVED_DATA:-/private/tmp/clamgui-release-derived}"
-clamav_prefix="${CLAMAV_PREFIX:-${HOMEBREW_PREFIX:-/opt/homebrew}}"
+source "$project_root/Scripts/clamav-development.sh"
+clamav_prefix="$(resolve_clamav_prefix "${1:-}" || true)"
 artifacts_dir="${CLAMGUI_ARTIFACTS_DIR:-$project_root/build/Artifacts}"
 staging_dir="$artifacts_dir/Release"
 pkgroot_dir="$artifacts_dir/pkgroot"
 pkg_path="$artifacts_dir/ClamGUI.pkg"
+checksum_path="$pkg_path.sha256"
 
 usage() {
   echo "Usage: $0 [clamav-prefix]" >&2
@@ -20,9 +22,12 @@ if [[ $# -gt 1 ]]; then
   exit 64
 fi
 
-if [[ $# -eq 1 ]]; then
-  clamav_prefix="$1"
+if [[ -z "$clamav_prefix" ]]; then
+  echo "error: Homebrew ClamAV was not found. Install it with: brew install clamav" >&2
+  exit 69
 fi
+
+"$project_root/Scripts/check-development-environment.sh" "$clamav_prefix"
 
 xcodebuild \
   -project "$project_root/ClamGUI.xcodeproj" \
@@ -33,6 +38,7 @@ xcodebuild \
   build
 
 app_bundle="$derived_data/Build/Products/Release/ClamGUI.app"
+app_version="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app_bundle/Contents/Info.plist")"
 
 "$project_root/Scripts/package-clamav-runtime.sh" "$app_bundle" "$clamav_prefix"
 "$project_root/Scripts/verify-clamav-runtime.sh" "$app_bundle"
@@ -52,9 +58,12 @@ pkgbuild \
   --root "$pkgroot_dir" \
   --install-location "/" \
   --identifier "com.clamgui.app" \
-  --version "1.0.0" \
+  --version "$app_version" \
   "$pkg_path"
+
+/usr/bin/shasum -a 256 "$pkg_path" | awk '{print $1 "  ClamGUI.pkg"}' > "$checksum_path"
 
 echo "Packaged release artifacts:"
 echo "  App: $staging_dir/ClamGUI.app"
 echo "  PKG: $pkg_path"
+echo "  SHA-256: $checksum_path"

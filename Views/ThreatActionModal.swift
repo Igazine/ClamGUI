@@ -175,7 +175,7 @@ struct FoundThreatsSheet: View {
     }
 }
 
-#if DEBUG
+#if DEBUG && !CLAMGUI_SCRIPTED_BUILD
 #Preview {
     ThreatActionModal()
 }

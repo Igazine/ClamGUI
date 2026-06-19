@@ -12,7 +12,14 @@ if [[ $# -lt 1 || $# -gt 2 ]]; then
 fi
 
 app_bundle="$1"
-clamav_prefix="${2:-${CLAMAV_PREFIX:-${HOMEBREW_PREFIX:-/opt/homebrew}}}"
+project_root="$(cd "$(dirname "$0")/.." && pwd)"
+source "$project_root/Scripts/clamav-development.sh"
+clamav_prefix="$(resolve_clamav_prefix "${2:-}" || true)"
+
+if [[ -z "$clamav_prefix" ]]; then
+  echo "error: Homebrew ClamAV was not found. Install it with: brew install clamav" >&2
+  exit 69
+fi
 
 if [[ ! -d "$app_bundle/Contents" ]]; then
   echo "error: app bundle not found: $app_bundle" >&2
@@ -55,22 +62,10 @@ libclamav_path="$(find_existing_file \
     exit 69
   }
 
-database_source=""
-for candidate in \
-  "$clamav_prefix/var/lib/clamav" \
-  "/opt/homebrew/var/lib/clamav" \
-  "/usr/local/var/lib/clamav" \
-  "$clamav_prefix/share/clamav" \
-  "/opt/homebrew/share/clamav" \
-  "/usr/local/share/clamav"; do
-  if compgen -G "$candidate/*.c[lv]d" >/dev/null || compgen -G "$candidate/*.cud" >/dev/null; then
-    database_source="$candidate"
-    break
-  fi
-done
+database_source="$(find_clamav_database_directory "$clamav_prefix" || true)"
 
 if [[ -z "$database_source" ]]; then
-  echo "error: ClamAV database files not found. Run freshclam locally or pass a ClamAV prefix with databases." >&2
+  echo "error: ClamAV database files not found. Run Scripts/check-development-environment.sh for setup instructions." >&2
   exit 69
 fi
 

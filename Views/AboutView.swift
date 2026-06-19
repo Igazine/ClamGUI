@@ -147,7 +147,7 @@ struct LinkButton: View {
     }
 }
 
-#if DEBUG
+#if DEBUG && !CLAMGUI_SCRIPTED_BUILD
 #Preview {
     AboutView()
 }

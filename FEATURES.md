@@ -47,11 +47,11 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Built-in app updater | ✅ | GitHub releases check |
+| Built-in app updater | ✅ | Downloads checksum-verified PKG assets from GitHub releases |
 | Background operation | ✅ | Menu bar only mode |
 | Start at login | ✅ | Via AppleScript |
-| Code signing | ⏳ | Needed for distribution |
-| Notarization | ⏳ | Needed for distribution |
+| Code signing | ⏳ | Deferred; current app and PKG artifacts intentionally remain unsigned |
+| Notarization | ⏳ | Deferred until a Developer ID is available |
 
 ## File Locations
 

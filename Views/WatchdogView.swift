@@ -995,7 +995,7 @@ private extension ClamAVManager.ScanResult.ScanStatus {
     }
 }
 
-#if DEBUG
+#if DEBUG && !CLAMGUI_SCRIPTED_BUILD
 #Preview {
     WatchdogView()
         .environmentObject(ClamAVManager.shared)

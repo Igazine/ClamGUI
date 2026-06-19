@@ -224,19 +224,36 @@ struct SettingsView: View {
                 Button(action: {
                     Task { @MainActor in
                         await updaterManager.checkForUpdates()
-                        if updaterManager.updateAvailable {
+                        if updaterManager.canDownloadUpdate {
                             updaterManager.showUpdateAlert()
                         }
                     }
                 }) {
                     Text("Check for Updates")
                 }
-                .disabled(updaterManager.isCheckingForUpdates)
+                .disabled(updaterManager.isCheckingForUpdates || updaterManager.isDownloadingUpdate)
             }
 
             if updaterManager.isCheckingForUpdates {
-                ProgressView()
-                    .scaleEffect(0.5)
+                Label("Checking for updates...", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            if updaterManager.isDownloadingUpdate {
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: updaterManager.downloadProgress ?? 0)
+                    Text("Downloading update...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if let statusMessage = updaterManager.statusMessage {
+                Text(statusMessage)
+                    .font(.caption)
+                    .foregroundColor(statusMessage.hasPrefix("Update failed") ? .red : .secondary)
+                    .textSelection(.enabled)
             }
         }
     }
@@ -544,7 +561,7 @@ private struct IgnoredExtensionToken: View {
     }
 }
 
-#if DEBUG
+#if DEBUG && !CLAMGUI_SCRIPTED_BUILD
 #Preview {
     SettingsView()
         .environmentObject(ClamAVManager.shared)

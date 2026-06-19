@@ -31,20 +31,11 @@ app-managed databases are never overwritten by this bootstrap step.
 ## Requirements
 
 - macOS 13.0 or later
-- For current development builds: Homebrew ClamAV, used to provide `libclamav`,
-  `freshclam`, and local signature files until the release bundle embeds them
+- Xcode 15.0 or later
+- Homebrew ClamAV for source builds. The build scripts copy its native runtime
+  and signature files into the generated app; end users do not need Homebrew
 
 ## Installation
-
-### 1. Development Dependency
-
-Install ClamAV via Homebrew for local development:
-
-```bash
-brew install clamav
-```
-
-### 2. Install ClamGUI
 
 Download the latest release from the [Releases](https://github.com/Igazine/ClamGUI/releases) page.
 
@@ -75,39 +66,82 @@ Open the "Settings" tab to:
 
 ## Building from Source
 
-### Requirements
-
-- Xcode 15.0 or later
-- macOS 13.0 SDK
-
-### Build Steps
+### Quick Start
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/Igazine/ClamGUI.git
    cd ClamGUI
    ```
 
-2. Open the project in Xcode:
+2. Install the development copy of ClamAV:
+
    ```bash
-   open ClamGUI.xcodeproj
+   brew install clamav
    ```
 
-3. Build and run (⌘R)
+3. Check the local toolchain and signature database:
 
-### Package the ClamAV Runtime
+   ```bash
+   Scripts/check-development-environment.sh
+   ```
 
-For local development, build and package the ClamAV runtime in one step:
+   If signatures are missing, the command prints the exact `freshclam` command
+   needed for the current Homebrew installation.
+
+4. Build a runnable Debug app:
+
+   ```bash
+   Scripts/build-debug-with-clamav-runtime.sh
+   ```
+
+   The app is written to:
+
+   ```text
+   /private/tmp/clamgui-derived/Build/Products/Debug/ClamGUI.app
+   ```
+
+The scripts discover both Apple Silicon and Intel Homebrew installations. Pass
+an explicit ClamAV prefix only when using a nonstandard installation:
 
 ```bash
-Scripts/build-debug-with-clamav-runtime.sh
+Scripts/build-debug-with-clamav-runtime.sh /path/to/clamav/prefix
 ```
 
-After a manual Xcode build, you can also copy the Homebrew ClamAV runtime into
-an app bundle directly:
+### Working in Xcode
+
+Open the project normally for editing:
 
 ```bash
-Scripts/package-clamav-runtime.sh /path/to/ClamGUI.app /opt/homebrew
+open ClamGUI.xcodeproj
+```
+
+Xcode can compile the Swift application without linking against ClamAV because
+the native API is loaded dynamically. A plain Cmd-R build does not embed the
+runtime or initial signature database. Use
+`Scripts/build-debug-with-clamav-runtime.sh` whenever a self-contained,
+functional scanner build is required.
+
+For a command-line compile-only check:
+
+```bash
+xcodebuild \
+  -project ClamGUI.xcodeproj \
+  -scheme ClamGUI \
+  -configuration Debug \
+  -derivedDataPath /private/tmp/clamgui-compile-check \
+  CODE_SIGNING_ALLOWED=NO \
+  "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CLAMGUI_SCRIPTED_BUILD" \
+  build
+```
+
+### Runtime Packaging
+
+To add the runtime to an existing app bundle:
+
+```bash
+Scripts/package-clamav-runtime.sh /path/to/ClamGUI.app
 ```
 
 The script copies `libclamav`, `freshclam`, non-system Homebrew dylib
@@ -121,14 +155,27 @@ To verify an already packaged app bundle:
 Scripts/verify-clamav-runtime.sh /path/to/ClamGUI.app
 ```
 
-To produce a local Release app bundle and PKG installer with the bundled ClamAV runtime:
+To produce a local Release app bundle and PKG installer with the bundled
+ClamAV runtime:
 
 ```bash
-Scripts/package-release-app.sh /opt/homebrew
+Scripts/package-release-app.sh
 ```
 
-This writes artifacts under `build/Artifacts/`. The current release package is
-ad-hoc signed for local validation and is not notarized yet.
+This writes the following artifacts:
+
+```text
+build/Artifacts/Release/ClamGUI.app
+build/Artifacts/ClamGUI.pkg
+build/Artifacts/ClamGUI.pkg.sha256
+```
+
+The app and PKG are intentionally unsigned and are not notarized. Runtime dylibs
+are ad-hoc signed only so macOS can load the rewritten local binaries.
+
+The app version comes from `MARKETING_VERSION` and the build number comes from
+`CURRENT_PROJECT_VERSION` in the Xcode project. The PKG automatically uses the
+same app version.
 
 To run an end-to-end native scanner smoke test against a clean file and the
 EICAR antivirus test string:
@@ -142,6 +189,20 @@ You can also point the same smoke test at an already packaged app:
 ```bash
 Scripts/smoke-test-native-scanner.sh build/Artifacts/Release/ClamGUI.app
 ```
+
+### Publishing an Update
+
+The built-in updater reads the latest release from
+`Igazine/ClamGUI`. Tag releases with a semantic version such as `v1.0.1` and
+attach both files using these exact names:
+
+```text
+ClamGUI.pkg
+ClamGUI.pkg.sha256
+```
+
+ClamGUI downloads the PKG, verifies its SHA-256 checksum, and opens the verified
+package in macOS Installer.
 
 ## Project Structure
 
@@ -163,6 +224,10 @@ ClamGUI/
 │   ├── MenuBarManager.swift   # Menu bar icon and menu
 │   ├── NotificationManager.swift # User notifications
 │   └── UpdaterManager.swift   # App update checks
+├── Scripts/
+│   ├── check-development-environment.sh
+│   ├── build-debug-with-clamav-runtime.sh
+│   └── package-release-app.sh
 └── Utilities/
     └── DirectoryWatcher.swift # File system monitoring
 ```
